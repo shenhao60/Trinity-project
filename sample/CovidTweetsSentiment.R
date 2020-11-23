@@ -96,3 +96,47 @@ for(i in 1:length(days)){
 maskScore <- data_frame(date=days, score=unlist(lapply(tweetList, getKeywordScoreLite, keyword="mask")))
 ggplot(maskScore, aes(date, score))+
   geom_line(aes(group=1))
+
+# Using twitteR data
+library(twitteR)
+setup_twitter_oauth(consumer_key    = "T0ARBsZJbzBffRMZjH3diCE2E", 
+                    consumer_secret  = "oZ17LxZK5G3bKZVwIbu2UmIdBYKVlaWmwS76bjCQz7m8KD6hk9", 
+                    access_token     = "access_token",
+                    access_secret    = "access_secret")
+
+# Adding .httr-oauth to .gitignore
+# Error in curl::curl_fetch_memory(url, handle = handle) : 
+#   Failed to connect to api.twitter.com port 443: Operation timed out
+
+maskTweets <- twListToDF(searchTwitter("mask", lang="en", 
+                                       geocode=lookup_coords("usa"),
+                                       since="2020-01-01", until="2020-11-22"))
+
+# Use the getWordDF and getTweetsWithSentiScoreDF functions in the previous steps
+maskWords <- getWordDF(maskTweets)
+maskTScore <- getTweetsWithSentiScoreDF(maskTweets, maskWords, get_sentiments("bing"))
+# Then we need a new function to calculate the daily sentiment score
+getDailyScore <- function(scoreDF){
+  scoreDF %>%
+    group_by(date) %>%
+    summarize(daily_score=mean(sentiment_score))
+}
+maskDailyScore <- getDailyScore(maskScore)
+ggplot(maskDailyScore, aes(date, daily_score))+
+  geom_line()
+
+# Comparing several keywords
+lockdownTweets <- twListToDF(searchTwitter("lockdown", lang="en", 
+                                           geocode=lookup_coords("usa"),
+                                           since="2020-01-01", until="2020-11-22"))
+lockdownWords <- getWordDF(lockdownTweets)
+lockdownScore <- getTweetsWithSentiScoreDF(lockdownTweets, lockdownScore, get_sentiments("bing"))
+lockdownDailyScore <- getDailyScore(lockdownScore)
+
+maskDailyScore$keyword <- "mask"
+lockdownDailyScore$keyword <- "lockdown"
+keywordDailyScore <- bind_rows(maskDailyScore, lockdownDailyScore)
+ggplot(keywordDailyScore, aes(date, daily_score, color=keyword))+
+  geom_line()
+
+
