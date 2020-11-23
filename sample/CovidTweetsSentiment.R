@@ -99,10 +99,13 @@ ggplot(maskScore, aes(date, score))+
 
 # Using twitteR data
 library(twitteR)
-setup_twitter_oauth(consumer_key    = "T0ARBsZJbzBffRMZjH3diCE2E", 
-                    consumer_secret  = "oZ17LxZK5G3bKZVwIbu2UmIdBYKVlaWmwS76bjCQz7m8KD6hk9", 
-                    access_token     = "access_token",
-                    access_secret    = "access_secret")
+library(ROAuth)
+library(httr)
+
+setup_twitter_oauth(consumer_key     = "GAD6tFVsvd8oAeC0jhqKQY4QD", 
+                    consumer_secret  = "0j3kRuuEiYAKmyEf8xE6u5aOqhUEaQZEdNZsKaWboFUsbuD7ba", 
+                    access_token     = "1328377313562509313-Z0a5NV4H3RptehbkLDkplODK5TvKMh",
+                    access_secret    = "0SDgW2lB0aAfpbeNMPsKn6amCjpB5Ic4uNVGmcSXddXP1")
 
 # Adding .httr-oauth to .gitignore
 # Error in curl::curl_fetch_memory(url, handle = handle) : 
@@ -117,13 +120,18 @@ maskWords <- getWordDF(maskTweets)
 maskTScore <- getTweetsWithSentiScoreDF(maskTweets, maskWords, get_sentiments("bing"))
 # Then we need a new function to calculate the daily sentiment score
 getDailyScore <- function(scoreDF){
-  scoreDF %>%
+  countDF <- scoreDF %>%
+    count(date)
+  colnames(countDF)[2] <- "number_of_tweets"
+  dailyScoreDF <- scoreDF %>%
     group_by(date) %>%
     summarize(daily_score=mean(sentiment_score))
+  dailyScoreDF <- left_join(dailyScoreDF, countDF, by="date")
+  gather(dailyScoreDF, val_type, value, daily_score:number_of_tweets, factor_key=TRUE)
 }
 maskDailyScore <- getDailyScore(maskScore)
-ggplot(maskDailyScore, aes(date, daily_score))+
-  geom_line()
+ggplot(maskDailyScore, aes(date, value))+
+  geom_line(aes(linetype=val_type))
 
 # Comparing several keywords
 lockdownTweets <- twListToDF(searchTwitter("lockdown", lang="en", 
@@ -137,6 +145,6 @@ maskDailyScore$keyword <- "mask"
 lockdownDailyScore$keyword <- "lockdown"
 keywordDailyScore <- bind_rows(maskDailyScore, lockdownDailyScore)
 ggplot(keywordDailyScore, aes(date, daily_score, color=keyword))+
-  geom_line()
+  geom_line(aes(linetype=val_type))
 
 
