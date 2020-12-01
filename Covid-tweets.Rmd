@@ -1,0 +1,129 @@
+---
+title: "Covid-tweets  Hao"
+output: html_notebook
+---
+
+## Initial setting
+* The database can be downloand from [OneDrive](https://1drv.ms/u/s!AtoA-RMyLpf2hO1rO82pP2y8OMfg-g?e=azfJ44)
+```{r message=FALSE, warning=FALSE}
+pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet)
+dbpath="D:/Assignment/Covid-tweets.db"
+conn=dbConnect(SQLite(),dbpath)
+create_token(app='MSSP-An-Auxiliary-Tool',
+             consumer_key='ORvbA3CEOP06hi9MHfz7yknwV',
+             consumer_secret='nAy2PRkiV4AYZ0NvHAF6Iw0IBFrttWMKTuxXbUWN4bcZnMpTQR',
+             access_token='1328377313562509313-j1iSFuJLLo3FL768jdnHKe1fzmcWnS',
+             access_secret='oJIhGoThBNSBSMLQBo3AxS5kcLrqq8sCjx6OIPX9NRmPT')
+```
+
+## Geo data collection
+* Note: This chunk needn't run again.
+```{r}
+if(F){ 
+paste("CREATE TABLE CoronavirusTweetsGeo",
+      " AS SELECT * FROM CoronavirusTweets",
+      " WHERE Geolocation_coordinate='YES'",sep='')%>%
+  dbSendQuery(conn,.)
+
+Geo_tweet=paste("SELECT Tweet_ID FROM CoronavirusTweetsGeo",sep='')%>%
+  dbGetQuery(conn,.)
+
+library(rtweet)
+
+
+for(i in 1:ceiling(nrow(Geo_tweet)/90000)) {
+  rl=rate_limit("lookup_statuses")
+  if(rl%>%select(remaining)!=900){
+    rl%>%select(reset)*60%>%ceiling()%>%Sys.sleep()
+  }
+  
+  geo=lookup_statuses(Geo_tweet$Tweet_ID[(900*i):nrow(Geo_tweet)])
+  if(i==1){Geo=geo}else{Geo=rbind(Geo,geo)}
+}
+
+lat_lng(Geo)%>%
+  select(status_id,user_id,screen_name,created_at,text,is_quote,
+         is_retweet,favourites_count,retweet_count,followers_count,
+         friends_count,lang,place_full_name,place_type,country_code,
+         place_name,country,lat,lng)%>%
+  dbWriteTable(conn,'CoronavirusTweetsGeo',.)
+}
+```
+
+## Get data function
+```{r}
+getTwitterData=function(conn,geoinfo=T,keywords=NULL,
+                        period=c('2020-03-29 00:00:00','2020-04-01 23:59:59')){
+  # Select table of database according to 'geoinfo'
+  if(geoinfo){
+    geoinfo_query='CoronavirusTweetsGeo'
+  }
+  else{
+    geoinfo_query='CoronavirusTweets'
+  }
+  # Add keywords conditions according to 'keywords' 
+  if(length(keywords==0)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(length(period)!=2){
+    period_query=''
+  }
+  else{
+    period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[1],"') ",
+                       "AND strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[2],"')) ",
+                       sep="")
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste("SELECT * FROM ",geoinfo_query,
+                  " ORDER BY status_id",sep="")
+    }
+    else{
+      query=paste("SELECT * FROM ",geoinfo_query," ",
+                  "WHERE",keywords_query,
+                  " ORDER BY status_id",sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste("SELECT * FROM ",geoinfo_query," ",
+                  "WHERE",period_query,
+                  " ORDER BY status_id",sep="")
+    }
+    else{
+      query=paste("SELECT * FROM ",geoinfo_query," ",
+                  "WHERE",period_query,
+                  "AND",keywords_query,
+                  " ORDER BY status_id",sep="")
+    }
+  }
+  # Obtain Data
+ dbGetQuery(conn,query)%>%mutate(created_at=ymd_hms(created_at))
+}
+```
+
+## Examples
+```{r}
+# get twitter data with geo information
+tweetsGeo=getTwitterData(conn,period = NULL)
+# get twitter data with giving keywords and time
+tweets=getTwitterData(conn,geoinfo = F,keywords = c('mask','N95','口罩'))
+```
+
+
