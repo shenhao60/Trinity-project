@@ -75,8 +75,8 @@ lat_lng(Geo)%>%
   dbWriteTable(conn,'CoronavirusTweetsGeo',.)
 }
 # Delete initial collection of covid tweets csv files table
-"DROP TABLE CoronavirusTweetsCsv"%>%
-  dbSendQuery(conn,.)
+#"DROP TABLE CoronavirusTweetsCsv"%>%
+#  dbSendQuery(conn,.)
 dbDisconnect(conn)
 ```
 
