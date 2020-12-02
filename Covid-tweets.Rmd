@@ -9,26 +9,53 @@ output: html_notebook
 pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet)
 dbpath="D:/Assignment/Covid-tweets.db"
 conn=dbConnect(SQLite(),dbpath)
+```
+
+## Geo data and April data collections
+* Note: This chunk needn't run again.
+```{r}
+# Set Twitter developer account
 create_token(app='MSSP-An-Auxiliary-Tool',
              consumer_key='ORvbA3CEOP06hi9MHfz7yknwV',
              consumer_secret='nAy2PRkiV4AYZ0NvHAF6Iw0IBFrttWMKTuxXbUWN4bcZnMpTQR',
              access_token='1328377313562509313-j1iSFuJLLo3FL768jdnHKe1fzmcWnS',
              access_secret='oJIhGoThBNSBSMLQBo3AxS5kcLrqq8sCjx6OIPX9NRmPT')
-```
+# Select all tweets in April 2020
+if(F){
+paste("CREATE TABLE CoronavirusTweets",
+      " AS SELECT * FROM CoronavirusTweetsCsv",
+      " WHERE (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+      "strftime('%Y-%m-%d %H:%M:%S','2020-03-29 00:00:00'))",
+      " AND (strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
+      "strftime('%Y-%m-%d %H:%M:%S','2020-04-29 23:59:59'))",sep='')%>%
+  dbSendQuery(conn,.)
+  
+April_tweet=paste("SELECT Tweet_ID FROM CoronavirusTweets",sep='')%>%
+  dbGetQuery(conn,.)
 
-## Geo data collection
-* Note: This chunk needn't run again.
-```{r}
+for(i in 1:ceiling(nrow(April_tweet)/90000)) {
+  rl=rate_limit("lookup_statuses")
+  if(rl%>%select(remaining)!=900){
+    rl%>%select(reset)*60%>%ceiling()%>%Sys.sleep()
+  }
+  april_tweet=lookup_statuses(April_tweet$Tweet_ID[(900*i):nrow(April_tweet)])
+  if(i==1){April_tweet=april_tweet}else{April_tweet=rbind(April_tweet,april_tweet)}
+}
+  April_tweet%>%
+  select(status_id,user_id,screen_name,created_at,text,is_quote,
+         is_retweet,favourites_count,retweet_count,followers_count,
+         friends_count,lang)%>%
+  dbWriteTable(conn,'CoronavirusTweets',.)
+}
+# Select all tweets with geo information from 202001 to 202011
 if(F){ 
 paste("CREATE TABLE CoronavirusTweetsGeo",
-      " AS SELECT * FROM CoronavirusTweets",
+      " AS SELECT * FROM CoronavirusTweetsCsv",
       " WHERE Geolocation_coordinate='YES'",sep='')%>%
   dbSendQuery(conn,.)
 
 Geo_tweet=paste("SELECT Tweet_ID FROM CoronavirusTweetsGeo",sep='')%>%
   dbGetQuery(conn,.)
-
-library(rtweet)
 
 
 for(i in 1:ceiling(nrow(Geo_tweet)/90000)) {
@@ -36,7 +63,6 @@ for(i in 1:ceiling(nrow(Geo_tweet)/90000)) {
   if(rl%>%select(remaining)!=900){
     rl%>%select(reset)*60%>%ceiling()%>%Sys.sleep()
   }
-  
   geo=lookup_statuses(Geo_tweet$Tweet_ID[(900*i):nrow(Geo_tweet)])
   if(i==1){Geo=geo}else{Geo=rbind(Geo,geo)}
 }
@@ -48,6 +74,10 @@ lat_lng(Geo)%>%
          place_name,country,lat,lng)%>%
   dbWriteTable(conn,'CoronavirusTweetsGeo',.)
 }
+# Delete initial collection of covid tweets csv files table
+"DROP TABLE CoronavirusTweetsCsv"%>%
+  dbSendQuery(conn,.)
+dbDisconnect(conn)
 ```
 
 ## Get data function
@@ -120,10 +150,14 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
 
 ## Examples
 ```{r}
+# connect to data base
+conn=dbConnect(SQLite(),dbpath)
 # get twitter data with geo information
 tweetsGeo=getTwitterData(conn,period = NULL)
 # get twitter data with giving keywords and time
 tweets=getTwitterData(conn,geoinfo = F,keywords = c('mask','N95','口罩'))
+# disconnect data base
+dbDisconnect(conn)
 ```
 
 
