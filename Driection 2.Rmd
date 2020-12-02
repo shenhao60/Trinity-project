@@ -1,0 +1,434 @@
+---
+title: "Covid-Tweets"
+author: "Group2:Danping Liu, Hao Shen, Haoqi Wang, Yuxi Wang"
+date: "2020/12/2"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet,tidytext,lubridate,rjson,plotly)
+dbpath="/Users/mac/Desktop/Covid-tweets-en.db"
+conn=dbConnect(SQLite(),dbpath)
+```
+
+## Database part
+## Geo data and April data collections
+* Note: This chunk needn't run again.
+```{r}
+# Set Twitter developer account
+create_token(app='MSSP-An-Auxiliary-Tool',
+             consumer_key='ORvbA3CEOP06hi9MHfz7yknwV',
+             consumer_secret='nAy2PRkiV4AYZ0NvHAF6Iw0IBFrttWMKTuxXbUWN4bcZnMpTQR',
+             access_token='1328377313562509313-j1iSFuJLLo3FL768jdnHKe1fzmcWnS',
+             access_secret='oJIhGoThBNSBSMLQBo3AxS5kcLrqq8sCjx6OIPX9NRmPT')
+# Select all tweets in April 2020
+if(F){
+paste("CREATE TABLE CoronavirusTweets",
+      " AS SELECT * FROM CoronavirusTweetsCsv",
+      " WHERE (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+      "strftime('%Y-%m-%d %H:%M:%S','2020-03-29 00:00:00'))",
+      " AND (strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
+      "strftime('%Y-%m-%d %H:%M:%S','2020-04-29 23:59:59'))",sep='')%>%
+  dbSendQuery(conn,.)
+  
+April_tweet=paste("SELECT Tweet_ID FROM CoronavirusTweets",sep='')%>%
+  dbGetQuery(conn,.)
+
+for(i in 1:ceiling(nrow(April_tweet)/90000)) {
+  rl=rate_limit("lookup_statuses")
+  if(rl%>%select(remaining)!=900){
+    rl%>%select(reset)*60%>%ceiling()%>%Sys.sleep()
+  }
+  april_tweet=lookup_statuses(April_tweet$Tweet_ID[(900*i):nrow(April_tweet)])
+  if(i==1){April_tweet=april_tweet}else{April_tweet=rbind(April_tweet,april_tweet)}
+}
+  April_tweet%>%
+  select(status_id,user_id,screen_name,created_at,text,is_quote,
+         is_retweet,favourites_count,retweet_count,followers_count,
+         friends_count,lang)%>%
+  dbWriteTable(conn,'CoronavirusTweets',.)
+}
+# Select all tweets with geo information from 202001 to 202011
+if(F){ 
+paste("CREATE TABLE CoronavirusTweetsGeo",
+      " AS SELECT * FROM CoronavirusTweetsCsv",
+      " WHERE Geolocation_coordinate='YES'",sep='')%>%
+  dbSendQuery(conn,.)
+
+Geo_tweet=paste("SELECT Tweet_ID FROM CoronavirusTweetsGeo",sep='')%>%
+  dbGetQuery(conn,.)
+
+
+for(i in 1:ceiling(nrow(Geo_tweet)/90000)) {
+  rl=rate_limit("lookup_statuses")
+  if(rl%>%select(remaining)!=900){
+    rl%>%select(reset)*60%>%ceiling()%>%Sys.sleep()
+  }
+  geo=lookup_statuses(Geo_tweet$Tweet_ID[(900*i):nrow(Geo_tweet)])
+  if(i==1){Geo=geo}else{Geo=rbind(Geo,geo)}
+}
+
+lat_lng(Geo)%>%
+  select(status_id,user_id,screen_name,created_at,text,is_quote,
+         is_retweet,favourites_count,retweet_count,followers_count,
+         friends_count,lang,place_full_name,place_type,country_code,
+         place_name,country,lat,lng)%>%
+  dbWriteTable(conn,'CoronavirusTweetsGeo',.)
+}
+# Delete initial collection of covid tweets csv files table
+#"DROP TABLE CoronavirusTweetsCsv"%>%
+#  dbSendQuery(conn,.)
+dbDisconnect(conn)
+```
+
+## Get data function
+```{r}
+getTwitterData=function(conn,geoinfo=T,keywords=NULL,
+                        period=c('2020-03-29 00:00:00','2020-04-30 23:59:59')){
+  # Select table of database according to 'geoinfo'
+  if(geoinfo){
+    geoinfo_query='CoronavirusTweetsGeo'
+  }
+  else{
+    geoinfo_query='CoronavirusTweets'
+  }
+  # Add keywords conditions according to 'keywords' 
+  if(length(keywords==0)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(length(period)!=2){
+    period_query=''
+  }
+  else{
+    period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[1],"') ",
+                       "AND strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[2],"')) ",
+                       sep="")
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste("SELECT * FROM ",geoinfo_query,
+                  " ORDER BY status_id",sep="")
+    }
+    else{
+      query=paste("SELECT * FROM ",geoinfo_query," ",
+                  "WHERE",keywords_query,
+                  " ORDER BY status_id",sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste("SELECT * FROM ",geoinfo_query," ",
+                  "WHERE",period_query,
+                  " ORDER BY status_id",sep="")
+    }
+    else{
+      query=paste("SELECT * FROM ",geoinfo_query," ",
+                  "WHERE",period_query,
+                  "AND",keywords_query,
+                  " ORDER BY status_id",sep="")
+    }
+  }
+  # Obtain Data
+ dbGetQuery(conn,query)%>%mutate(created_at=ymd_hms(created_at))
+}
+```
+
+```{r}
+getTwitterTrend=function(conn,geoinfo=T,trend='day',keywords=NULL,
+                       period=c('2020-03-29 00:00:00','2020-04-30 23:59:59')){
+  # Add trend cconditions according to 'trend'
+  if(trend=='day'){
+    trend_query=c("'%Y-%m-%d'","date")
+  }
+  else{
+    if(trend=='week'){
+      trend_query=c("'%W'","week")
+    }
+    else{
+      if(trend=='month'){
+        trend_query=c("'%m'","month")
+      }
+      else{
+        stop("The trend can only be 'day', 'week' or 'month'.") 
+      }
+    }
+  }
+    # Select table of database according to 'geoinfo'
+  if(geoinfo){
+    geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                        ",created_at) AS ",trend_query[2],", ",
+                        "count(*) AS number, place_name, country, ",
+                        "country_code FROM CoronavirusTweetsGeo ", sep="")
+    group_query=paste(" GROUP BY strftime(",trend_query[1],
+                      ",created_at),place_name,country_code",sep="")
+  }
+  else{
+    geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                        ",created_at) AS ",trend_query[2],", ",
+                        "count(*) AS number FROM CoronavirusTweets",sep="")
+    group_query=paste(" GROUP BY strftime(",trend_query[1],
+                      ",created_at)",sep="")
+  }
+  # Add keywords conditions according to 'keywords' 
+  if(length(keywords==0)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(length(period)!=2){
+    period_query=''
+  }
+  else{
+    period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[1],"') ",
+                       "AND strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[2],"')) ",
+                       sep="")
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste(geoinfo_query,group_query,sep="")
+    }
+    else{
+      query=paste(geoinfo_query," WHERE",keywords_query,group_query,sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste(geoinfo_query," WHERE",period_query,group_query,sep="")
+    }
+    else{
+      query=paste(geoinfo_query," WHERE",period_query,"AND",keywords_query,
+                  group_query,sep="")
+    }
+  }
+  # Obtain Data
+ dbGetQuery(conn,query)
+}
+```
+
+## Examples
+```{r}
+# connect to data base
+conn=dbConnect(SQLite(),dbpath)
+# get twitter data with geo information
+tweetsGeo=getTwitterData(conn,period = NULL)
+# get twitter montly data with geo information
+tweetsMonthlyGeo=getTwitterTrend(conn,trend='month',period=NULL)
+# get twitter data with giving keywords
+tweets=getTwitterData(conn,geoinfo = F,keywords = c('mask','N95','口罩'))
+# get twitter daily trends giving keywords
+tweetsDaily=getTwitterTrend(conn,geoinfo = F,keywords = c('mask','N95','口罩'))
+# disconnect data base
+dbDisconnect(conn)
+```
+
+# The sentiment analysis part
+```{r}
+# For English tweets in United States
+getEnScore <- function(DF, keyword){
+  DFsub <- DF %>%
+    filter(lang=="en"&country_code=="US")
+  
+  DFsub$date <- gsub("T.*", "", DFsub$created_at)
+  
+  wordDF <- DFsub %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stop_words) 
+  
+  scoreDF <- wordDF %>%
+    inner_join(get_sentiments("bing")) %>%
+    count(status_id, sentiment) %>%
+    spread(sentiment, n)
+  scoreDF[is.na(scoreDF)] <- 0
+  scoreDF <- scoreDF %>%
+    mutate(sentiment_score=(positive-negative)/(positive+negative)) 
+  
+  tweetScoreDF <- right_join(DFsub, scoreDF, by="status_id")
+  
+  if(length(keyword)!=1){
+    keyword <- paste(keyword, collapse="|")
+  }
+  keywordDF <- tweetScoreDF %>%
+    filter(grepl(keyword, text))
+  
+  return(
+    keywordDF %>%
+      group_by(date) %>%
+      summarize(overall_sentiment=mean(sentiment_score))
+  )
+}
+
+```
+
+```{r}
+# For all languages
+# Create sentiment lexicon dictionary
+# https://www.kaggle.com/rtatman/sentiment-lexicons-for-81-languages
+
+langCode <- read.csv("SentimentLexicons/correctedMetadata.csv", header=TRUE)$`Wikipedia.Language.Code`
+
+negTerms <- data_frame(lang=vector(), word=vector())
+posTerms <- data_frame(lang=vector(), word=vector())
+
+for(i in 1:length(langCode)){
+  negTerms <- rbind(negTerms, data_frame(lang=langCode[i], word=read.delim(file=paste0("SentimentLexicons/negative_words_", langCode[i], ".txt", sep=""), header=FALSE, check.names = FALSE)))
+  posTerms <- rbind(posTerms, data_frame(lang=langCode[i], word=read.delim(file=paste0("SentimentLexicons/positive_words_", langCode[i], ".txt", sep=""), header=FALSE, check.names = FALSE)))
+}
+negTerms$sentiment <- "negative"
+posTerms$sentiment <- "positive"
+
+mySentimentLexicon <- bind_rows(negTerms, posTerms)
+mySentimentLexicon <- as.data.frame(mySentimentLexicon)
+
+# colnames(mySentimentLexicon) <- c("lang", "word", "sentiment")
+# rownames(mySentimentLexicon) <- 1:nrow(mySentimentLexicon)
+
+# Function
+getScore <- function(DF, selectedLang, keyword){
+  DFsub <- DF %>%
+    filter(lang==selectedLang)
+  
+  DFsub$date <- gsub("T.*", "", DFsub$created_at)
+  
+  wordDF <- DFsub %>%
+    unnest_tokens(word, text) %>%
+    # anti_join(fromJSON(file=paste0("stopwords-json-master/dist/", selectedLang, ".json", sep="")))
+    anti_join(stopwords(language = selectedLang, source = "stopwords-iso"))
+  
+  scoreDF <- wordDF %>%
+    inner_join(mySentimentLexicon, by=c("lang", "word")) %>%
+    count(status_id, sentiment) %>%
+    spread(sentiment, n)
+  scoreDF[is.na(scoreDF)] <- 0
+  scoreDF <- scoreDF %>%
+    mutate(sentiment_score=(positive-negative)/(positive+negative)) 
+  
+  tweetScoreDF <- right_join(DFsub, scoreDF, by="status_id")
+  
+  if(length(keyword)!=1){
+    keyword <- paste(keyword, collapse="|")
+  }
+  keywordDF <- tweetScoreDF %>%
+    filter(grepl(keyword, text))
+  
+  return(
+    keywordDF %>%
+      group_by(date) %>%
+      summarize(overall_sentiment=mean(sentiment_score))
+  )
+}
+```
+
+```{r}
+# Load all the data (too slow, Not try)
+files <- list.files('/Users/mac/Desktop/Trinity/archive/')
+data.df <- data.frame()
+for (i in 1:length(files)) {
+  filepath.i <- paste('/Users/mac/Desktop/Trinity/archive/',
+                      files[i],sep='')
+  data.i <- read.csv(filepath.i)
+  data.df <- rbind(data.df,data.i)
+}
+
+mask_score <- getEnScore(tweetMarch, "mask"); mask_score
+getEnScore(tweetMarch, c("mask", "N95"))
+
+# Sample
+tweet0329 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-03-29 Coronavirus Tweets.CSV", header=TRUE)
+tweet0330 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-03-30 Coronavirus Tweets.CSV", header=TRUE)
+tweet0331 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-03-31 Coronavirus Tweets.CSV", header=TRUE)
+tweet0401 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-01 Coronavirus Tweets.CSV", header=TRUE)
+tweet0402 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-02 Coronavirus Tweets.CSV", header=TRUE)
+tweet_test <- list(tweet0329, tweet0330, tweet0331,tweet0401,tweet0402)
+tweet_test <- data.frame(Reduce(rbind, tweet_test))
+# getEnScore(tweet_test, "mask")
+mask_score <- getEnScore(tweet_test, c("mask", "N95")); mask_score
+# getScore does not work well
+# getScore(tweet_test, "ja", "マスク")
+```
+
+Visualization
+
+```{r}
+
+# Firstly make a word frequency plot
+# connect to data base
+conn=dbConnect(SQLite(),dbpath)
+# get twitter data with geo information
+tweetsGeo=getTwitterData(conn,period = NULL)
+# get twitter data with giving keywords and time
+mask <- getTwitterTrend(conn,geoinfo = F,keywords = c('mask','N95'))
+mask <- mutate(mask,
+       x =c(1:33) )
+# making a word frequent plot of mask related data
+ggplot(data = mask, aes(x = x, y = number)) +
+  geom_area(color="blue",fill="purple",alpha=.2)
+
+# disconnect data base
+dbDisconnect(conn)
+
+```
+
+```{r}
+
+# load spread data
+daily <- read.csv(file= "/Users/mac/Desktop/Trinity/us_covid19_daily.csv", header=TRUE)
+spread_data <- select(daily,date,hospitalizedCumulative,death,deathIncrease,negativeIncrease)%>%
+  mutate(date_new=ymd(date))%>%
+  arrange(daily, desc(date_new))
+spread_data <- spread_data[68:100,]
+
+
+# using plotly package to make a plot that both have death, sentiment and frequency
+death <- spread_data[,3]
+frequency <- mask$number
+sentiment <- rnorm(100, mean = -5)
+date <-spread_data$date_new
+date <- 1:33
+data <- data.frame(date, death, frequency, sentiment)
+
+fig <- plot_ly(data, x = ~date, y = ~death, name = 'death', type = 'scatter', mode = 'lines+markers') 
+fig <- fig %>% 
+  add_trace(y = ~frequency, name = 'frequency', mode = 'lines+markers') 
+fig <- fig %>% 
+  add_trace(y = ~sentiment, name = 'sentiment', mode = 'lines+markers')
+fig
+```
+
+
+
+
+
+
+
+
