@@ -7,10 +7,9 @@ output: html_notebook
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet,tidytext,lubridate,rjson,plotly,pacman,tmap,sp,cartogram)
+pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet,tidytext,lubridate,rjson,plotly,pacman,maps,tmap,sp,cartogram,revgeo)
 dbpath="/Users/mac/Desktop/Covid-tweets-en.db"
 conn=dbConnect(SQLite(),dbpath)
-library(pacman)
 ```
 
 ## Database part
@@ -370,7 +369,36 @@ tweet0330 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-03-30 Coronavirus
 tweet0331 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-03-31 Coronavirus Tweets.CSV", header=TRUE)
 tweet0401 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-01 Coronavirus Tweets.CSV", header=TRUE)
 tweet0402 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-02 Coronavirus Tweets.CSV", header=TRUE)
-tweet_test <- list(tweet0329, tweet0330, tweet0331,tweet0401,tweet0402)
+tweet0403 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-03 Coronavirus Tweets.CSV", header=TRUE)
+tweet0404 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-04 Coronavirus Tweets.CSV", header=TRUE)
+tweet0405 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-05 Coronavirus Tweets.CSV", header=TRUE)
+tweet0406 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-06 Coronavirus Tweets.CSV", header=TRUE)
+tweet0407 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-07 Coronavirus Tweets.CSV", header=TRUE)
+tweet0408 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-08 Coronavirus Tweets.CSV", header=TRUE)
+tweet0409 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-09 Coronavirus Tweets.CSV", header=TRUE)
+tweet0410 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-10 Coronavirus Tweets.CSV", header=TRUE)
+tweet0411 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-11 Coronavirus Tweets.CSV", header=TRUE)
+tweet0412 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-12 Coronavirus Tweets.CSV", header=TRUE)
+tweet0413 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-13 Coronavirus Tweets.CSV", header=TRUE)
+tweet0414 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-14 Coronavirus Tweets.CSV", header=TRUE)
+tweet0415 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-15 Coronavirus Tweets.CSV", header=TRUE)
+tweet0416 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-16 Coronavirus Tweets.CSV", header=TRUE)
+tweet0417 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-17 Coronavirus Tweets.CSV", header=TRUE)
+tweet0418 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-18 Coronavirus Tweets.CSV", header=TRUE)
+tweet0419 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-19 Coronavirus Tweets.CSV", header=TRUE)
+tweet0420 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-20 Coronavirus Tweets.CSV", header=TRUE)
+tweet0421 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-21 Coronavirus Tweets.CSV", header=TRUE)
+tweet0422 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-22 Coronavirus Tweets.CSV", header=TRUE)
+tweet0423 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-23 Coronavirus Tweets.CSV", header=TRUE)
+tweet0424 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-24 Coronavirus Tweets.CSV", header=TRUE)
+tweet0425 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-25 Coronavirus Tweets.CSV", header=TRUE)
+tweet0426 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-26 Coronavirus Tweets.CSV", header=TRUE)
+tweet0427 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-27 Coronavirus Tweets.CSV", header=TRUE)
+tweet0428 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-28 Coronavirus Tweets.CSV", header=TRUE)
+tweet0429 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-29 Coronavirus Tweets.CSV", header=TRUE)
+tweet0430 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-30 Coronavirus Tweets.CSV", header=TRUE)
+
+tweet_test <- list(tweet0329, tweet0330, tweet0331,tweet0401,tweet0402,tweet0403,tweet0404,tweet0405,tweet0406,tweet0407,tweet0408,tweet0409,tweet0410,tweet0411,tweet0412,tweet0413,tweet0414,tweet0415,tweet0416,tweet0417,tweet0418,tweet0419,tweet0420,tweet0421,tweet0422,tweet0423,tweet0424,tweet0425,tweet0426,tweet0427,tweet0428,tweet0429,tweet0430)
 tweet_test <- data.frame(Reduce(rbind, tweet_test))
 # getEnScore(tweet_test, "mask")
 mask_score <- getEnScore(tweet_test, c("mask", "N95")); mask_score
@@ -428,20 +456,44 @@ fig
 
 
 ```{r}
+
 # For the geo plot
+states <- c("texas","oklahoma","kansas","louisiana","arkansas","missouri","iowa",
+"wisconsin","michigan","illinois","indiana","ohio","kentucky","tennessee",
+"alabama","mississippi","florida","georgia","south carolina","north carolina",
+"virginia","west virginia","maryland","delaware","pennsylvania","new jersey",
+"new york","connecticut","rhode island","massachusetts","vermont",
+"new hampshire","maine")
+
+#turn data from the maps package in to a data frame suitable for plotting with ggplot2
+map_states <- map_data("county", states)
+# To draw the border-by group 10
+map_states_border <- map_data("state",states)
+
+
 view(tweetsGeo)
 tweetsGeo <- tweetsGeo %>%
   group_by(place_name)%>%
-  mutate(sum = n())
+  mutate(sum = n(),
+         long=lng)
 summary(tweetsGeo$sum)
+
+
 #divide sum of precip into 4 parts which is 
 tweetsGeo$cut <- cut(tweetsGeo$sum,
                       breaks=c(0,36,1045,1122,9000),
                       include.lowest = T)
 
+tweetsGeo_En <- filter(tweetsGeo, country_code == 'US')
+View(tweetsGeo_En)
+
+#use 'merge' to combine two data frames.
+tweetsGeo_En_1 <- merge(tweetsGeo_En,map_states, by=c("long","lat"))
+
+revgeo(longitude=-77.02532657, latitude=38.93946801)
 # Make the geo plot in ggplot
 tweetsGeo_plot <- ggplot()+
-  geom_polygon(tweetsGeo, mapping=aes(x=lng, y=lat), fill=cut)+
+  geom_polygon(tweetsGeo_En, mapping=aes(x=lng, y=lat), fill=cut)+
   #display discrete values on a map
   scale_fill_brewer(palette="Blues")+
   #change the name of x, y, and title
