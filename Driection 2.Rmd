@@ -7,9 +7,10 @@ output: html_notebook
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet,tidytext,lubridate,rjson,plotly)
+pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet,tidytext,lubridate,rjson,plotly,pacman,tmap,sp,cartogram)
 dbpath="/Users/mac/Desktop/Covid-tweets-en.db"
 conn=dbConnect(SQLite(),dbpath)
+library(pacman)
 ```
 
 ## Database part
@@ -412,7 +413,7 @@ spread_data <- spread_data[68:100,]
 # using plotly package to make a plot that both have death, sentiment and frequency
 death <- spread_data[,3]
 frequency <- mask$number
-sentiment <- rnorm(100, mean = -5)
+sentiment <- mask_score$overall_sentiment
 date <-spread_data$date_new
 date <- 1:33
 data <- data.frame(date, death, frequency, sentiment)
@@ -426,7 +427,38 @@ fig
 ```
 
 
+```{r}
+# For the geo plot
+view(tweetsGeo)
+tweetsGeo <- tweetsGeo %>%
+  group_by(place_name)%>%
+  mutate(sum = n())
+summary(tweetsGeo$sum)
+#divide sum of precip into 4 parts which is 
+tweetsGeo$cut <- cut(tweetsGeo$sum,
+                      breaks=c(0,36,1045,1122,9000),
+                      include.lowest = T)
 
+# Make the geo plot in ggplot
+tweetsGeo_plot <- ggplot()+
+  geom_polygon(tweetsGeo, mapping=aes(x=lng, y=lat), fill=cut)+
+  #display discrete values on a map
+  scale_fill_brewer(palette="Blues")+
+  #change the name of x, y, and title
+  xlab("Longtitude")+ylab("Latitude")+ggtitle("tweetsGeo")+
+  #add marks
+  labs(fill="number of tweets")+
+  theme(plot.title = element_text(hjust = 0.5, size = 18))
+
+tweetsGeo_plot
+
+
+data(World)
+class(World)
+World %>% as.data.frame() %>% head()
+tm_shape(World)+
+  tm_polygons("HPI", palette="-Blues", contrast=.7, id="name", title="Happiness Index")
+```
 
 
 
