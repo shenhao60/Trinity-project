@@ -369,41 +369,15 @@ tweet0330 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-03-30 Coronavirus
 tweet0331 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-03-31 Coronavirus Tweets.CSV", header=TRUE)
 tweet0401 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-01 Coronavirus Tweets.CSV", header=TRUE)
 tweet0402 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-02 Coronavirus Tweets.CSV", header=TRUE)
-tweet0403 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-03 Coronavirus Tweets.CSV", header=TRUE)
-tweet0404 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-04 Coronavirus Tweets.CSV", header=TRUE)
-tweet0405 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-05 Coronavirus Tweets.CSV", header=TRUE)
-tweet0406 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-06 Coronavirus Tweets.CSV", header=TRUE)
-tweet0407 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-07 Coronavirus Tweets.CSV", header=TRUE)
-tweet0408 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-08 Coronavirus Tweets.CSV", header=TRUE)
-tweet0409 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-09 Coronavirus Tweets.CSV", header=TRUE)
-tweet0410 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-10 Coronavirus Tweets.CSV", header=TRUE)
-tweet0411 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-11 Coronavirus Tweets.CSV", header=TRUE)
-tweet0412 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-12 Coronavirus Tweets.CSV", header=TRUE)
-tweet0413 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-13 Coronavirus Tweets.CSV", header=TRUE)
-tweet0414 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-14 Coronavirus Tweets.CSV", header=TRUE)
-tweet0415 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-15 Coronavirus Tweets.CSV", header=TRUE)
-tweet0416 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-16 Coronavirus Tweets.CSV", header=TRUE)
-tweet0417 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-17 Coronavirus Tweets.CSV", header=TRUE)
-tweet0418 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-18 Coronavirus Tweets.CSV", header=TRUE)
-tweet0419 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-19 Coronavirus Tweets.CSV", header=TRUE)
-tweet0420 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-20 Coronavirus Tweets.CSV", header=TRUE)
-tweet0421 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-21 Coronavirus Tweets.CSV", header=TRUE)
-tweet0422 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-22 Coronavirus Tweets.CSV", header=TRUE)
-tweet0423 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-23 Coronavirus Tweets.CSV", header=TRUE)
-tweet0424 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-24 Coronavirus Tweets.CSV", header=TRUE)
-tweet0425 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-25 Coronavirus Tweets.CSV", header=TRUE)
-tweet0426 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-26 Coronavirus Tweets.CSV", header=TRUE)
-tweet0427 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-27 Coronavirus Tweets.CSV", header=TRUE)
-tweet0428 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-28 Coronavirus Tweets.CSV", header=TRUE)
-tweet0429 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-29 Coronavirus Tweets.CSV", header=TRUE)
-tweet0430 <- read.csv("/Users/mac/Desktop/Trinity/archive/2020-04-30 Coronavirus Tweets.CSV", header=TRUE)
 
-tweet_test <- list(tweet0329, tweet0330, tweet0331,tweet0401,tweet0402,tweet0403,tweet0404,tweet0405,tweet0406,tweet0407,tweet0408,tweet0409,tweet0410,tweet0411,tweet0412,tweet0413,tweet0414,tweet0415,tweet0416,tweet0417,tweet0418,tweet0419,tweet0420,tweet0421,tweet0422,tweet0423,tweet0424,tweet0425,tweet0426,tweet0427,tweet0428,tweet0429,tweet0430)
+
+tweet_test <- list(tweet0329, tweet0330, tweet0331,tweet0401,tweet0402)
 tweet_test <- data.frame(Reduce(rbind, tweet_test))
 # getEnScore(tweet_test, "mask")
 mask_score <- getEnScore(tweet_test, c("mask", "N95")); mask_score
 # getScore does not work well
 # getScore(tweet_test, "ja", "マスク")
+
 ```
 
 Visualization
@@ -423,6 +397,11 @@ mask <- mutate(mask,
 ggplot(data = mask, aes(x = x, y = number)) +
   geom_area(color="blue",fill="purple",alpha=.2)
 
+mask_score <- mutate(mask_score,
+       x =c(1:5) )
+ggplot(data = mask_score, aes(x = x, y = overall_sentiment)) +
+  geom_line()+
+  geom_point(size=4,shape=22,color="darkred",fill="pink")
 # disconnect data base
 dbDisconnect(conn)
 
@@ -432,23 +411,36 @@ dbDisconnect(conn)
 
 # load spread data
 daily <- read.csv(file= "/Users/mac/Desktop/Trinity/us_covid19_daily.csv", header=TRUE)
-spread_data <- select(daily,date,hospitalizedCumulative,death,deathIncrease,negativeIncrease)%>%
+spread_data <- select(daily,date,hospitalizedCumulative,death,deathIncrease,negativeIncrease,positiveIncrease)%>%
   mutate(date_new=ymd(date))%>%
   arrange(daily, desc(date_new))
 spread_data <- spread_data[68:100,]
 
 
 # using plotly package to make a plot that both have death, sentiment and frequency
-death <- spread_data[,3]
+positiveincrease <- spread_data[,6]
 frequency <- mask$number
 sentiment <- mask_score$overall_sentiment
 date <-spread_data$date_new
 date <- 1:33
-data <- data.frame(date, death, frequency, sentiment)
+data <- data.frame(date, positiveincrease, frequency) # , sentiment)
 
-fig <- plot_ly(data, x = ~date, y = ~death, name = 'death', type = 'scatter', mode = 'lines+markers') 
+ay <- list(
+  tickfont = list(color = "red"),
+  overlaying = "y",
+  side = "right",
+  title = "frequency"
+)
+
+fig <- plot_ly(data, x = ~date, y = ~positiveincrease, name = 'positiveincrease', type = 'scatter', mode = 'lines') 
 fig <- fig %>% 
-  add_trace(y = ~frequency, name = 'frequency', mode = 'lines+markers') 
+  add_trace(y = ~frequency, name = 'frequency',  mode = 'lines+markers',yaxis = "y2") 
+fig <- fig %>% layout(
+  title = "Increase and the frequency of mask", yaxis2 = ay,
+  xaxis = list(title="x")
+)
+fig
+
 fig <- fig %>% 
   add_trace(y = ~sentiment, name = 'sentiment', mode = 'lines+markers')
 fig
@@ -490,7 +482,9 @@ View(tweetsGeo_En)
 #use 'merge' to combine two data frames.
 tweetsGeo_En_1 <- merge(tweetsGeo_En,map_states, by=c("long","lat"))
 
-revgeo(longitude=-77.02532657, latitude=38.93946801)
+tweetsGeo_En$state <- tweetsGeo_En%>%
+  mutate(state=revgeo(longitude=long, latitude=lat, output='frame',provider = 'bing', API='AhuhJ0p6HX3rF3tZ-9Tn9qJ2OSVF7HGz433SLbP1aJqQcNV4AIHqvB6c5orl6t6V'))
+
 # Make the geo plot in ggplot
 tweetsGeo_plot <- ggplot()+
   geom_polygon(tweetsGeo_En, mapping=aes(x=lng, y=lat), fill=cut)+
