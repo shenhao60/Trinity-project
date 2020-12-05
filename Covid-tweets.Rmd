@@ -7,19 +7,13 @@ output: html_notebook
 * The database can be downloand from [OneDrive](https://1drv.ms/u/s!AtoA-RMyLpf2hO1rO82pP2y8OMfg-g?e=azfJ44)
 ```{r message=FALSE, warning=FALSE}
 pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet)
-dbpath="D:/Assignment/Covid-tweets.db"
-conn=dbConnect(SQLite(),dbpath)
+dbpath="../Covid-tweets-en.db"
+conn=dbConnect(SQLite(),dbpath,auto)
 ```
 
 ## Geo data and April data collections
 * Note: This chunk needn't run again.
 ```{r}
-# Set Twitter developer account
-create_token(app='MSSP-An-Auxiliary-Tool',
-             consumer_key='ORvbA3CEOP06hi9MHfz7yknwV',
-             consumer_secret='nAy2PRkiV4AYZ0NvHAF6Iw0IBFrttWMKTuxXbUWN4bcZnMpTQR',
-             access_token='1328377313562509313-j1iSFuJLLo3FL768jdnHKe1fzmcWnS',
-             access_secret='oJIhGoThBNSBSMLQBo3AxS5kcLrqq8sCjx6OIPX9NRmPT')
 # Select all tweets in April 2020
 if(F){
 paste("CREATE TABLE CoronavirusTweets",
@@ -32,7 +26,12 @@ paste("CREATE TABLE CoronavirusTweets",
   
 April_tweet=paste("SELECT Tweet_ID FROM CoronavirusTweets",sep='')%>%
   dbGetQuery(conn,.)
-
+# Set Twitter developer account
+create_token(app='MSSP-An-Auxiliary-Tool',
+             consumer_key='ORvbA3CEOP06hi9MHfz7yknwV',
+             consumer_secret='nAy2PRkiV4AYZ0NvHAF6Iw0IBFrttWMKTuxXbUWN4bcZnMpTQR',
+             access_token='1328377313562509313-j1iSFuJLLo3FL768jdnHKe1fzmcWnS',
+             access_secret='oJIhGoThBNSBSMLQBo3AxS5kcLrqq8sCjx6OIPX9NRmPT')
 for(i in 1:ceiling(nrow(April_tweet)/90000)) {
   rl=rate_limit("lookup_statuses")
   if(rl%>%select(remaining)!=900){
@@ -48,7 +47,7 @@ for(i in 1:ceiling(nrow(April_tweet)/90000)) {
   dbWriteTable(conn,'CoronavirusTweets',.)
 }
 # Select all tweets with geo information from 202001 to 202011
-if(F){ 
+if(F){
 paste("CREATE TABLE CoronavirusTweetsGeo",
       " AS SELECT * FROM CoronavirusTweetsCsv",
       " WHERE Geolocation_coordinate='YES'",sep='')%>%
@@ -73,10 +72,19 @@ lat_lng(Geo)%>%
          friends_count,lang,place_full_name,place_type,country_code,
          place_name,country,lat,lng)%>%
   dbWriteTable(conn,'CoronavirusTweetsGeo',.)
-}
+
 # Delete initial collection of covid tweets csv files table
-#"DROP TABLE CoronavirusTweetsCsv"%>%
-#  dbSendQuery(conn,.)
+"DROP TABLE CoronavirusTweetsCsv" %>%
+  dbSendQuery(conn,.)
+# Create index to accelerate query
+paste("CREATE INDEX CT_status_id ON CoronavirusTweets(status_id);",
+  "CREATE INDEX CTG_status_id ON CoronavirusTweetsGeo(status_id);",
+  "CREATE INDEX TS_status_id ON TweetsSentiment(status_id);",
+  "CREATE INDEX TGS_status_id ON TweetsGeoSentiment(status_id);",
+  "CREATE INDEX CTG_lat_long ON CoronavirusTweetsGeo(lat,lng);",
+  "CREATE UNIQUE INDEX GD_lat_long ON GeoDetail(lat,lng)")%>%
+  dbSendQuery(conn,.)
+}
 dbDisconnect(conn)
 ```
 
@@ -86,10 +94,22 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
                         period=c('2020-03-29 00:00:00','2020-04-01 23:59:59')){
   # Select table of database according to 'geoinfo'
   if(geoinfo){
-    geoinfo_query='CoronavirusTweetsGeo'
+    geoinfo_query=paste("SELECT CoronavirusTweetsGeo.*,",
+                        "city,state,country,sentiment_score ",
+                        "FROM CoronavirusTweetsGeo ",
+                        "LEFT JOIN TweetsGeoSentiment ON ",
+                        "CoronavirusTweetsGeo.status_id=",
+                        "TweetsGeoSentiment.status_id ",
+                        "LEFT JOIN GeoDetail ON ",
+                        "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
+                        "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",sep="")
   }
   else{
-    geoinfo_query='CoronavirusTweets'
+    geoinfo_query=paste("SELECT CoronavirusTweets.*,sentiment_score ",
+                        "FROM CoronavirusTweets ",
+                        "LEFT JOIN TweetsSentiment ON ",
+                        "CoronavirusTweets.status_id=",
+                        "TweetsSentiment.status_id",sep="")
   }
   # Add keywords conditions according to 'keywords' 
   if(length(keywords==0)){
@@ -121,35 +141,30 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
   # Write SQL
   if(period_query==''){
     if(keywords_query==''){
-      query=paste("SELECT * FROM ",geoinfo_query,
-                  " ORDER BY status_id",sep="")
+      query=paste(geoinfo_query,sep="")
     }
     else{
-      query=paste("SELECT * FROM ",geoinfo_query," ",
-                  "WHERE",keywords_query,
-                  " ORDER BY status_id",sep="")
+      query=paste(geoinfo_query," WHERE",keywords_query,sep="")
     }
   }
   else{
     if(keywords_query==''){
-      query=paste("SELECT * FROM ",geoinfo_query," ",
-                  "WHERE",period_query,
-                  " ORDER BY status_id",sep="")
+      query=paste(geoinfo_query," WHERE",period_query,sep="")
     }
     else{
-      query=paste("SELECT * FROM ",geoinfo_query," ",
-                  "WHERE",period_query,
-                  "AND",keywords_query,
-                  " ORDER BY status_id",sep="")
+      query=paste(geoinfo_query," WHERE",
+                  period_query,"AND",keywords_query,sep="")
     }
   }
   # Obtain Data
- dbGetQuery(conn,query)%>%mutate(created_at=ymd_hms(created_at))
+ dbGetQuery(conn,query)
 }
 ```
 
+
+## Get trend function
 ```{r}
-getTwitterTrend=function(conn,geoinfo=T,trend='day',keywords=NULL,
+getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
                        period=c('2020-03-29 00:00:00','2020-04-01 23:59:59')){
   # Add trend cconditions according to 'trend'
   if(trend=='day'){
@@ -169,23 +184,76 @@ getTwitterTrend=function(conn,geoinfo=T,trend='day',keywords=NULL,
     }
   }
     # Select table of database according to 'geoinfo'
-  if(geoinfo){
+  if(is.null(geoinfo)){
     geoinfo_query=paste("SELECT strftime(",trend_query[1],
                         ",created_at) AS ",trend_query[2],", ",
-                        "count(*) AS number, place_name, country, ",
-                        "country_code FROM CoronavirusTweetsGeo ", sep="")
-    group_query=paste(" GROUP BY strftime(",trend_query[1],
-                      ",created_at),place_name,country_code",sep="")
-  }
-  else{
-    geoinfo_query=paste("SELECT strftime(",trend_query[1],
-                        ",created_at) AS ",trend_query[2],", ",
-                        "count(*) AS number FROM CoronavirusTweets",sep="")
+                        "count(*) AS number, ",
+                        "avg(sentiment_score) AS sentiment_score ",
+                        "FROM CoronavirusTweets ",
+                        "LEFT JOIN TweetsSentiment ON ",
+                        "CoronavirusTweets.status_id=",
+                        "TweetsSentiment.status_id",sep="")
     group_query=paste(" GROUP BY strftime(",trend_query[1],
                       ",created_at)",sep="")
   }
+  else{
+    if(geoinfo=='country'){
+    geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                        ",created_at) AS ",trend_query[2],", ",
+                        "count(*) AS number, country, ",
+                        "avg(sentiment_score) AS sentiment_score ",
+                        "FROM CoronavirusTweetsGeo ",
+                        "LEFT JOIN TweetsGeoSentiment ON ",
+                        "CoronavirusTweetsGeo.status_id=",
+                        "TweetsGeoSentiment.status_id ",
+                        "LEFT JOIN GeoDetail ON ",
+                        "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
+                        "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",sep="")
+    group_query=paste(" GROUP BY strftime(",trend_query[1],
+                      ",created_at),country",sep="")
+    }
+    else{
+      if(geoinfo=='state'){
+        geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                            ",created_at) AS ",trend_query[2],", ",
+                            "count(*) AS number, country, state, ",
+                            "avg(sentiment_score) AS sentiment_score ",
+                            "FROM CoronavirusTweetsGeo ",
+                            "LEFT JOIN TweetsGeoSentiment ON ",
+                            "CoronavirusTweetsGeo.status_id=",
+                            "TweetsGeoSentiment.status_id ",
+                            "LEFT JOIN GeoDetail ON ",
+                            "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
+                            "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",sep="")
+        group_query=paste(" GROUP BY strftime(",trend_query[1],
+                          ",created_at),country,state",sep="")
+      }
+      else{
+        if(geoinfo=='city'){
+          geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                              ",created_at) AS ",trend_query[2],", ",
+                              "count(*) AS number, country, state, city, ",
+                              "avg(sentiment_score) AS sentiment_score ",
+                              "FROM CoronavirusTweetsGeo ",
+                              "LEFT JOIN TweetsGeoSentiment ON ",
+                              "CoronavirusTweetsGeo.status_id=",
+                              "TweetsGeoSentiment.status_id ",
+                              "LEFT JOIN GeoDetail ON ",
+                              "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
+                              "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",
+                              sep="")
+           group_query=paste(" GROUP BY strftime(",trend_query[1],
+                             ",created_at),country,state,city",sep="")
+        }
+        else{
+          stop("The geoinfo can only be 'NULL', 'city', 'state' or 'country'.")
+        }
+      }
+    }
+  }
+  
   # Add keywords conditions according to 'keywords' 
-  if(length(keywords==0)){
+  if(is.null(keywords)){
     keywords_query=''
   }
   else{
@@ -201,15 +269,20 @@ getTwitterTrend=function(conn,geoinfo=T,trend='day',keywords=NULL,
     keywords_query=paste(keywords_query,") ",sep="")
   }
   # Add period conditions according to 'period'
-  if(length(period)!=2){
+  if(is.null(period)){
     period_query=''
   }
   else{
-    period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+    if(length(period)==2){
+          period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
                        "strftime('%Y-%m-%d %H:%M:%S','",period[1],"') ",
                        "AND strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
                        "strftime('%Y-%m-%d %H:%M:%S','",period[2],"')) ",
                        sep="")
+    }
+    else{
+      stop("The time period should be a vector with length 2.") 
+    }
   }
   # Write SQL
   if(period_query==''){
@@ -240,15 +313,18 @@ getTwitterTrend=function(conn,geoinfo=T,trend='day',keywords=NULL,
 # connect to data base
 conn=dbConnect(SQLite(),dbpath)
 # get twitter data with geo information
-tweetsGeo=getTwitterData(conn,period = NULL)
+tweetsGeo=getTwitterData(conn,geoinfo = T,period = NULL)
 # get twitter montly data with geo information
-tweetsMonthlyGeo=getTwitterTrend(conn,trend='month',period=NULL)
+tweetsMonthlyGeo=getTwitterTrend(conn,geoinfo = 'country',trend='month',period=NULL)
 # get twitter data with giving keywords
 tweets=getTwitterData(conn,geoinfo = F,keywords = c('mask','N95','口罩'))
 # get twitter daily trends giving keywords
-tweetsDaily=getTwitterTrend(conn,geoinfo = F,keywords = c('mask','N95','口罩'))
+tweetsDaily=getTwitterTrend(conn,geoinfo = NULL,keywords = c('mask','N95','口罩'))
 # disconnect data base
 dbDisconnect(conn)
+# Release memory
+rm(tweetsGeo,tweetsMonthlyGeo,tweets,tweetsDaily)
+gc()
 ```
 
 
