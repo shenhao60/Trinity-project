@@ -472,6 +472,8 @@ spread_data <- spread_data[68:100,]
 positiveincrease <- spread_data[,6]
 frequency <- mask$number
 sentiment <- mask$sentiment_score
+sentiment <- rbind(mask,c('2020-04-30','8000',''))
+head(mask,1)
 date <-spread_data$date_new
 date <- 1:33
 data <- data.frame(date, positiveincrease, frequency, sentiment)
@@ -485,7 +487,7 @@ ay <- list(
 
 fig <- plot_ly(data, x = ~date, y = ~positiveincrease, name = 'positiveincrease', type = 'scatter', mode = 'lines') 
 fig <- fig %>% 
-  add_trace(y = ~frequency, name = 'frequency',  mode = 'lines+markers',yaxis = "y2") 
+  add_trace(y = data$frequency, x=data$date, name = 'Mask N95',  mode = 'lines+markers',yaxis = "y2") 
 fig <- fig %>% layout(
   title = "Increase and the frequency of mask", yaxis2 = ay,
   xaxis = list(title="x"))
@@ -496,25 +498,6 @@ fig
 ```
 
 # Geom plots
-```{r}
-# load spread data
-Apr40 <- read.csv(file= "/Users/mac/Desktop/Trinity/us_states.csv", header=TRUE)
-
-Apr40$hover <- with(Apr40, paste(state, '<br>', "Positive:", positive, "<br>","death:", death )) #put data
-fig <- plot_geo(Apr40, locationmode = 'USA-states') 
-fig <- fig %>% add_trace(
-  locations = ~state,
-  type='choropleth',
-  z= ~death,
-  text = ~hover,
-  colorscale="Reds"
-)
-# Add a title
-fig <- fig %>% layout(title = "The situation in the U.S. as of April 30")
-# Final
-fig
-```
-
 
 ```{r}
 
@@ -556,34 +539,37 @@ tweetsGeo_En_1 <- tweetsGeo_En%>%
 
 
 # Make the geo plot in ggplot
-# tweetsGeo_plot <- ggplot()+
-#  geom_polygon(tweetsGeo_En, mapping=aes(x=long, y=lat), fill=cut)+
-  #connects the observations in the order in which they appear in the 'map_states'
-#  geom_path(map_states, mapping=aes(x=long, y=lat),color="grey")+
-  # Add the border to make it clear-by Group 10
-#  geom_path(map_states_border, mapping=aes(x=long, y=lat),color="black")+
+tweetsGeo_plot <- ggplot()+
+  geom_polygon(tweetsGeo_En_1, mapping=aes(x=long, y=lat, group=city), fill=cut)+
+ # connects the observations in the order in which they appear in the 'map_states'
+  geom_path(map_states, mapping=aes(x=long, y=lat,group=city),color="grey")+
+ #  Add the border to make it clear-by Group 10
+  geom_path(map_states_border, mapping=aes(x=long, y=lat,group=city),color="black")+
   
-  # display discrete values on a map
-#  scale_fill_brewer(palette="Blues")+
+ #  display discrete values on a map
+  scale_fill_brewer(palette="Blues")+
   # change the name of x, y, and title
-#  xlab("Longtitude")+ylab("Latitude")+ggtitle("tweetsGeo")+
-  # add marks
-#  labs(fill="number of tweets")+
- # theme(plot.title = element_text(hjust = 0.5, size = 18))
+  xlab("Longtitude")+ylab("Latitude")+ggtitle("tweetsGeo")+
+ #  add marks
+  labs(fill="number of tweets")+
+  theme(plot.title = element_text(hjust = 0.5, size = 18))
 
-# tweetsGeo_plot
+ tweetsGeo_plot
 
-tweetsGeo_En_1$hover <- with(tweetsGeo_En_1, paste(state, '<br>', "number of tweets", sum_states,'<br>', "sentiment score of this state", mean_sentiment)) #put data
-fig <- plot_geo(tweetsGeo_En_1, locationmode = 'USA-states') 
+
+Apr40 <- read.csv(file= "/Users/mac/Desktop/Trinity/us_states.csv", header=TRUE)
+Geoplot <- merge(Apr40,tweetsGeo_En_1 , by=c("state"))
+Geoplot$hover <- with(tweetsGeo_En_1, paste(state, '<br>',  '<br>', "Positive:", positive, "<br>","death:", death,"<br>", "number of tweets", sum_states,'<br>', "sentiment score of this state", mean_sentiment)) #put data
+fig <- plot_geo(Geoplot, locationmode = 'USA-states') 
 fig <- fig %>% add_trace(
   locations = ~state,
   type='choropleth',
   z= ~mean_sentiment,
   text = ~hover,
-  colors="Purples"
+  colors="Reds"
 )
 # Add a title
-fig <- fig %>% layout(title = "Number of tweets per state")
+fig <- fig %>% layout(title = "sentiment score of each state")
 # Final
 fig
 
