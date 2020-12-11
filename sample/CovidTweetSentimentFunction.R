@@ -85,7 +85,7 @@ getLangScore <- function(DF, selectedLang, keyword){
   DFsub$date <- gsub("T.*", "", DFsub$created_at)
   
   stopwd <- data_frame(word=stopwords(language = selectedLang, source = "stopwords-iso"), lexicon="custom")
-
+  
   # Split the tweets into words
   wordDF <- DFsub %>%
     unnest_tokens(word, text) %>%
@@ -96,8 +96,7 @@ getLangScore <- function(DF, selectedLang, keyword){
     senti <- mySentimentLexicon %>%
       filter(lang==langs[i]) %>%
       select(-lang)
-  }
-  else{senti <- get_sentiments("bing")}
+  } else {senti <- get_sentiments("bing")}
   
   scoreDF <- wordDF %>%
     inner_join(senti) %>%
@@ -136,14 +135,15 @@ getScore <- function(DF, keyword){
   for(i in 1:length(langs)){
     DFsub <- DF_split[[i]]
     
-    if(langs[i] %in% stopwords_getlanguages("stopwords-iso"))
+    if(langs[i] %in% stopwords_getlanguages("stopwords-iso")){
       stopwd <- data.frame(word=stopwords(language = langs[i], source = "stopwords-iso"), lexicon="custom")
-    else if(langs[i] %in% stopwords_getlanguages("snowball"))
+    } else if(langs[i] %in% stopwords_getlanguages("snowball")){
       stopwd <- data.frame(word=stopwords(language = langs[i], source = "snowball"), lexicon="custom")
-    else if(langs[i] %in% stopwords_getlanguages("nltk"))
+    } else if(langs[i] %in% stopwords_getlanguages("nltk")){
       stopwd <- data.frame(word=stopwords(language = langs[i], source = "nltk"), lexicon="custom")
-    else
+    } else {
       stopwd <- data.frame(word="", lexicon="custom")
+    }
     
     wordDF <- DFsub %>%
       unnest_tokens(word, text) %>%
@@ -153,8 +153,7 @@ getScore <- function(DF, keyword){
       senti <- mySentimentLexicon %>%
         filter(lang==langs[i]) %>%
         select(-lang)
-    }
-    else{senti <- get_sentiments("bing")}
+    } else {senti <- get_sentiments("bing")}
     
     
     scoreDF <- wordDF %>%
@@ -249,27 +248,26 @@ getAllLangScore <- function(DF, selectedLang){
   # Create a date column
   DFsub$date <- gsub("T.*", "", DFsub$created_at)
   
-  if(langs[i] %in% stopwords_getlanguages("stopwords-iso"))
+  if (langs[i] %in% stopwords_getlanguages("stopwords-iso")){
     stopwd <- data.frame(word=stopwords(language = langs[i], source = "stopwords-iso"), lexicon="custom")
-  else if(langs[i] %in% stopwords_getlanguages("snowball"))
+  } else if (langs[i] %in% stopwords_getlanguages("snowball")){
     stopwd <- data.frame(word=stopwords(language = langs[i], source = "snowball"), lexicon="custom")
-  else if(langs[i] %in% stopwords_getlanguages("nltk"))
+  } else if (langs[i] %in% stopwords_getlanguages("nltk")){
     stopwd <- data.frame(word=stopwords(language = langs[i], source = "nltk"), lexicon="custom")
-  else
+  } else {
     stopwd <- data.frame(word="", lexicon="custom")
-  
+  }
   # Split the tweets into words
   wordDF <- DFsub %>%
     unnest_tokens(word, text) %>%
     # Here I use the stopwords package
     anti_join(stopwd)
   
-  if(langs[i] %in% unique(mySentimentLexicon$lang)){
+  if (langs[i] %in% unique(mySentimentLexicon$lang)){
     senti <- mySentimentLexicon %>%
       filter(lang==langs[i]) %>%
       select(-lang)
-  }
-  else{senti <- get_sentiments("bing")}
+  } else {senti <- get_sentiments("bing")}
   
   scoreDF <- wordDF %>%
     inner_join(senti) %>%
@@ -305,15 +303,16 @@ getAllScore <- function(DF){
   for(i in 1:length(langs)){
     DFsub <- DF_split[[i]]
     
-    if(langs[i] %in% stopwords_getlanguages("stopwords-iso"))
+    if(langs[i] %in% stopwords_getlanguages("stopwords-iso")){
       stopwd <- data.frame(word=stopwords(language = langs[i], source = "stopwords-iso"), lexicon="custom")
-    else if(langs[i] %in% stopwords_getlanguages("snowball"))
+    }else if(langs[i] %in% stopwords_getlanguages("snowball")){
       stopwd <- data.frame(word=stopwords(language = langs[i], source = "snowball"), lexicon="custom")
-    else if(langs[i] %in% stopwords_getlanguages("nltk"))
+    }else if(langs[i] %in% stopwords_getlanguages("nltk")){
       stopwd <- data.frame(word=stopwords(language = langs[i], source = "nltk"), lexicon="custom")
-    else
+    }else{
       stopwd <- data.frame(word="", lexicon="custom")
-
+    }
+    
     wordDF <- DFsub %>%
       unnest_tokens(word, text) %>%
       anti_join(stopwd) 
@@ -322,8 +321,7 @@ getAllScore <- function(DF){
       senti <- mySentimentLexicon %>%
         filter(lang==langs[i]) %>%
         select(-lang)
-    }
-    else{senti <- get_sentiments("bing")}
+    }else{senti <- get_sentiments("bing")}
     
     
     scoreDF <- wordDF %>%
