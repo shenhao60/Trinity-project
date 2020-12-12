@@ -9,7 +9,7 @@ output: html_notebook
 * The database can be downloand from [OneDrive](https://1drv.ms/u/s!AtoA-RMyLpf2hO1rO82pP2y8OMfg-g?e=azfJ44)
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet,tidytext,lubridate,rjson,plotly,pacman,maps,tmap,sp,cartogram,revgeo,DT
+pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet,tidytext,lubridate,rjson,plotly,pacman,maps,tmap,sp,revgeo,DT
         )
 dbpath="/Users/mac/Desktop/Covid-tweets-en.db"
 conn=dbConnect(SQLite(),dbpath)
@@ -497,7 +497,6 @@ fig <- fig %>% layout(
   xaxis = list(title="x"))
 fig
 
-
 ```
 
 # Geom plots
@@ -516,9 +515,6 @@ fig
 #map_states <- map_data("county", states)
 # To draw the border-by group 10
 #map_states_border <- map_data("state",states)
-
-
-view(tweetsGeo)
 tweetsGeo <- tweetsGeo %>%
   group_by(state)%>%
   mutate(sum = n(),
@@ -563,6 +559,13 @@ tweetsGeo_En_1 <- tweetsGeo_En%>%
 Apr40 <- read.csv(file= "/Users/mac/Desktop/Trinity/us_states_daily.csv", header=TRUE)
 Geoplot <- merge(Apr40,tweetsGeo_En_1 , by=c("state"))
 Geoplot$hover <- with(Geoplot, paste(state, '<br>',  '<br>', "Positive:", positive, "<br>","death:", death,"<br>", "number of tweets", sum_states,'<br>', "sentiment score of this state", mean_sentiment)) #put data
+
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  showlakes = TRUE,
+  lakecolor = toRGB('white')
+)
 fig <- plot_geo(Geoplot, locationmode = 'USA-states') 
 fig <- fig %>% add_trace(
   locations = ~state,
@@ -572,13 +575,18 @@ fig <- fig %>% add_trace(
   colors="Reds"
 )
 # Add a title
-fig <- fig %>% layout(title = "sentiment score of each state")
+fig <- fig %>% layout(title = "sentiment score of each state",geo = g)
 # Final
 fig
 
 ```
 
 ```{r}
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  showlakes = TRUE,
+  lakecolor = toRGB('white'))
 fig <- plot_geo(Geoplot, locationmode = 'USA-states') 
 fig <- fig %>% add_trace(
   locations = ~state,
@@ -588,7 +596,7 @@ fig <- fig %>% add_trace(
   colors="Purples"
 )
 # Add a title
-fig <- fig %>% layout(title = "sentiment score of each state")
+fig <- fig %>% layout(title = "sentiment score of each state",geo=g)
 # Final
 fig
 ```
