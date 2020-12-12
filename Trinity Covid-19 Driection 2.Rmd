@@ -484,18 +484,14 @@ ay <- list(
 )
 
 fig <- plot_ly(data, x = ~date, y = ~positiveincrease, name = 'positiveincrease', type = 'scatter', mode = 'lines+markers') 
-
-fig <- fig %>% 
-  add_trace(y = frequency, x=date, name = 'Mask N95',  mode = 'lines',yaxis = "y2",marker = list(color = c("green","green","green",
-                                                                                       "green","green","red","red",
-                                                                                       "red","red","red","red","red",
-                                                                                       "red","red","red","green",
-                                                                                       "red","red","red","red",
-                                                                                       "green","green","red","red",
-                                                                                       "red","red","red","red",
-                                                                                       "red","red","green","green",
-                                                                                       "red")))
-
+for(i in 1:32)
+  if((sentiment[i]+sentiment[i+1])/2 >0 ){
+    fig <-fig %>% add_trace(y = frequency[i:(i+1)], x=date[i:(i+1)], name = NULL,  mode = 'lines',yaxis = "y2",color = I("green"))
+  }else{
+              
+    fig <-fig %>% add_trace(y = frequency[i:(i+1)], x=date[i:(i+1)], name = NULL,  mode = 'lines',yaxis = "y2",color = I("red"))       
+    }
+              
 fig <- fig %>% layout(
   title = "Statistics about 'mask, N95'", yaxis2 = ay,
   xaxis = list(title="x"))
