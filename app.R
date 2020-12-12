@@ -1,6 +1,7 @@
 library(shiny)
 
-
+library(shinydashboard)
+library(dashboardthemes)
 
 library(tidyverse)
 library(lubridate)
@@ -454,38 +455,63 @@ Geoplot <- merge(Apr40,tweetsGeo_En_1 , by=c("state"))
 Geoplot$hover <- with(Geoplot, paste(state, '<br>',  '<br>', "Positive:", positive, "<br>","death:", death,"<br>", "number of tweets", sum_states,'<br>', "sentiment score of this state", mean_sentiment)) #put data
 
 
+ay =list(
+  tickfont = list(color = "red"),
+  overlaying = "y",
+  side = "right",
+  title = "frequency"
+) 
 
 
 
+header <- dashboardHeader(title="Covid Tweet Trend")
 
-
-
-# Define UI for application that draws a histogram
-ui=fluidPage(
-  headerPanel('What is related to COVID-19'),
-  # Sidebar
-  sidebarPanel(
-    textInput("text", "Enter Text",  value = "mask"),
+body <- dashboardBody(
+  fluidRow(
+    column(3,
+           box(width=NULL,
+               textInput("keyword", label=h4("text input"), value="Enter keyword..."),
+               actionButton("addButton", "add"),
+               actionButton("resetButton", "reset")
+           ),
+           box(width=NULL,
+               uiOutput("keywordSelect")
+           )
     ),
-  # Main panel
-  mainPanel(
-    h3('The frequency of the word with the COVID-19 trend'),
-    plotlyOutput('fig1'),
-    h3('Sentiment Score of each state'),
-    plotlyOutput('fig2'),
+    column(9,
+           plotlyOutput("fig1"))
+    
+    # Put plots in this column
+  ),
+  fluidRow(
+    column(3,),
+    column(9, plotlyOutput("fig2"))
   )
 )
+ui <- dashboardPage(
+  header,
+  dashboardSidebar(disable = TRUE),
+  body
+)
 
-# Define server logic required to draw a histogram
-server <- function(input,output) {
-
-  # get twitter data with giving keywords and time
-  df= reactive({getTwitterTrend(conn,geoinfo = NULL,keywords = input$text)}) 
+# Server
+server <- function(input, output) {
+  keywordVal <- reactiveValues(word=vector()) 
+  observeEvent(input$addButton,{
+    keywordDF <- data_frame(text=input$keyword)
+    keywordDF <- keywordDF %>%
+      unnest_tokens(word, text)
+    keywordVal$word <- c(keywordVal$word, keywordDF$word)
+  })
+  observeEvent(input$resetButton,{
+    keywordVal$word <- NULL
+  })
+  df= reactive({getTwitterTrend(conn,geoinfo = NULL,keywords = input$keywordSelected) })
   # using plotly package to make a plot that both have death, sentiment and frequency
   
   data = reactive({
-     cbind('date'=spread_data$date, 'positiveIncrease number'=spread_data$positiveIncrease, 'frequency'=df()$number,  'sentiment'=df()$sentiment_score)
-    }) 
+    cbind('date'=spread_data$date, 'positiveIncrease number'=spread_data$positiveIncrease, 'frequency'=df()$number,  'sentiment'=df()$sentiment_score)
+  }) 
   
   ay =reactive({list(
     tickfont = list(color = "red"),
@@ -496,9 +522,9 @@ server <- function(input,output) {
   
   fig1=reactive({
     fig1= plot_ly(data=data.frame(data()), x = ~date, y = ~positiveIncrease, name = 'positiveIncrease', type = 'scatter', mode = 'lines') %>%
-        add_trace(data=data.frame(data()),y = ~frequency, x=~date, name = 'text',  mode = 'lines+markers',yaxis = "y2") %>%
-        layout(title = "Increase and the frequency of the text", yaxis2 = ay(),xaxis = list(title="x")) %>%
-        add_trace(data=data.frame(data()), y = ~sentiment, name = 'sentiment', mode = 'markers')
+      add_trace(data=data.frame(data()),y = ~frequency, x=~date, name = 'text',  mode = 'lines+markers',yaxis = "y2") %>%
+      layout(title = "Increase and the frequency of the text", yaxis2 = ay(),xaxis = list(title="x")) %>%
+      add_trace(data=data.frame(data()), y = ~sentiment, name = 'sentiment', mode = 'markers')
     fig1
   })
   fig2 =reactive({
@@ -507,11 +533,16 @@ server <- function(input,output) {
       layout(title = "sentiment score of each state")
     fig2
   }) 
-
+  output$keywordSelect <- renderUI({
+    checkboxGroupInput("keywordSelected", "Select keywords: ", keywordVal$word)
+  })
+  output$value <- renderPrint({ str(input$keywordSelected) })
   output$fig1=renderPlotly(fig1())
   output$fig2=renderPlotly(fig2())
-}    
-
+}
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+
+
+
