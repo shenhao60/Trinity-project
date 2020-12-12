@@ -313,98 +313,6 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
   dbGetQuery(conn,query)
 }
 
-
-# For English tweets in United States
-getEnScore <- function(DF, keyword){
-  DFsub <- DF %>%
-    filter(lang=="en"&country_code=="US")
-  
-  DFsub$date <- gsub("T.*", "", DFsub$created_at)
-  
-  wordDF <- DFsub %>%
-    unnest_tokens(word, text) %>%
-    anti_join(stop_words) 
-  
-  scoreDF <- wordDF %>%
-    inner_join(get_sentiments("bing")) %>%
-    count(status_id, sentiment) %>%
-    spread(sentiment, n)
-  scoreDF[is.na(scoreDF)] <- 0
-  scoreDF <- scoreDF %>%
-    mutate(sentiment_score=(positive-negative)/(positive+negative)) 
-  
-  tweetScoreDF <- right_join(DFsub, scoreDF, by="status_id")
-  
-  if(length(keyword)!=1){
-    keyword <- paste(keyword, collapse="|")
-  }
-  keywordDF <- tweetScoreDF %>%
-    filter(grepl(keyword, text))
-  
-  return(
-    keywordDF %>%
-      group_by(date) %>%
-      summarize(overall_sentiment=mean(sentiment_score))
-  )
-}
-
-# For all languages
-# Create sentiment lexicon dictionary
-# https://www.kaggle.com/rtatman/sentiment-lexicons-for-81-languages
-
-langCode <- read.csv("correctedMetadata.csv", header=TRUE)$`Wikipedia.Language.Code`
-
-negTerms <- data_frame(lang=vector(), word=vector())
-posTerms <- data_frame(lang=vector(), word=vector())
-
-for(i in 1:length(langCode)){
-  negTerms <- rbind(negTerms, data_frame(lang=langCode[i], word=read.delim(file=paste0("SentimentLexicons/negative_words_", langCode[i], ".txt", sep=""), header=FALSE, check.names = FALSE)))
-  posTerms <- rbind(posTerms, data_frame(lang=langCode[i], word=read.delim(file=paste0("SentimentLexicons/positive_words_", langCode[i], ".txt", sep=""), header=FALSE, check.names = FALSE)))
-}
-negTerms$sentiment <- "negative"
-posTerms$sentiment <- "positive"
-
-mySentimentLexicon <- bind_rows(negTerms, posTerms)
-mySentimentLexicon <- as.data.frame(mySentimentLexicon)
-
-# colnames(mySentimentLexicon) <- c("lang", "word", "sentiment")
-# rownames(mySentimentLexicon) <- 1:nrow(mySentimentLexicon)
-
-# Function
-getScore <- function(DF, selectedLang, keyword){
-  DFsub <- DF %>%
-    filter(lang==selectedLang)
-  
-  DFsub$date <- gsub("T.*", "", DFsub$created_at)
-  
-  wordDF <- DFsub %>%
-    unnest_tokens(word, text) %>%
-    # anti_join(fromJSON(file=paste0("stopwords-json-master/dist/", selectedLang, ".json", sep="")))
-    anti_join(stopwords(language = selectedLang, source = "stopwords-iso"))
-  
-  scoreDF <- wordDF %>%
-    inner_join(mySentimentLexicon, by=c("lang", "word")) %>%
-    count(status_id, sentiment) %>%
-    spread(sentiment, n)
-  scoreDF[is.na(scoreDF)] <- 0
-  scoreDF <- scoreDF %>%
-    mutate(sentiment_score=(positive-negative)/(positive+negative)) 
-  
-  tweetScoreDF <- right_join(DFsub, scoreDF, by="status_id")
-  
-  if(length(keyword)!=1){
-    keyword <- paste(keyword, collapse="|")
-  }
-  keywordDF <- tweetScoreDF %>%
-    filter(grepl(keyword, text))
-  
-  return(
-    keywordDF %>%
-      group_by(date) %>%
-      summarize(overall_sentiment=mean(sentiment_score))
-  )
-}
-
 # Firstly make a word frequency plot
 # connect to data base
 conn=dbConnect(SQLite(),dbpath)
@@ -475,7 +383,8 @@ body <- dashboardBody(
                actionButton("resetButton", "reset")
            ),
            box(width=NULL,
-               uiOutput("keywordSelect")
+               uiOutput("keywordSelect"),
+               actionButton("plotButton", "plot")
            )
     ),
     column(9,
@@ -497,16 +406,35 @@ ui <- dashboardPage(
 # Server
 server <- function(input, output) {
   keywordVal <- reactiveValues(word=vector()) 
+  # Use keywordSel$word to plot
+  keywordSel <- reactiveValues(word=vector()) 
+  
   observeEvent(input$addButton,{
     keywordDF <- data_frame(text=input$keyword)
     keywordDF <- keywordDF %>%
       unnest_tokens(word, text)
     keywordVal$word <- c(keywordVal$word, keywordDF$word)
   })
+  
   observeEvent(input$resetButton,{
     keywordVal$word <- NULL
   })
-  df= reactive({getTwitterTrend(conn,geoinfo = NULL,keywords = input$keywordSelected) })
+  
+  output$keywordSelect <- renderUI({
+    checkboxGroupInput("keywordSelected", "Select keywords: ", keywordVal$word)
+  })
+  
+  observeEvent(input$plotButton,{
+    keywordSel$word <- c(keywordSel$word, input$keywordSelected)
+  })
+  
+  df= reactive({getTwitterTrend(conn,geoinfo = NULL,keywords = keywordSel$word) })
+  
+  output$fig1=renderPlotly(fig1())
+  
+  output$fig2=renderPlotly(fig2())
+  
+  
   # using plotly package to make a plot that both have death, sentiment and frequency
   
   data = reactive({
@@ -533,12 +461,7 @@ server <- function(input, output) {
       layout(title = "sentiment score of each state")
     fig2
   }) 
-  output$keywordSelect <- renderUI({
-    checkboxGroupInput("keywordSelected", "Select keywords: ", keywordVal$word)
-  })
-  output$value <- renderPrint({ str(input$keywordSelected) })
-  output$fig1=renderPlotly(fig1())
-  output$fig2=renderPlotly(fig2())
+
 }
 
 # Run the application 
