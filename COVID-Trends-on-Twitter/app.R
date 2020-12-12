@@ -3,7 +3,6 @@ library(tidyverse)
 library(lubridate)
 library(DBI)
 library(RSQLite)
-library(cartogram)
 library(plotly)
 
 # get Twitter Data function
@@ -276,13 +275,17 @@ server <- function(input,output) {
                   positiveIncrease=spread_data$positiveIncrease,
                   frequency=.$number,
                   sentiment=.$sentiment_score)}
-    plot_ly(data,x=~date,y=~positiveIncrease,
-            name='positiveIncrease',type='scatter',mode='lines')%>%
-        add_trace(data,y=~frequency,x=~date,
-                  name=input$text,mode='lines+markers',yaxis="y2")%>%
-        layout(title="Increase and the frequency of the text",
-               yaxis2=ay,xaxis=list(title="x"))%>%
-        add_trace(data,y=~sentiment,name='sentiment',mode='markers')
+    fig <- plot_ly(data, x = ~date, y = ~positiveIncrease, name = 'positiveincrease', type = 'scatter', mode = 'lines+markers') 
+    for(i in 1:32){
+      if((data$sentiment[i]+data$sentiment[i+1])/2 >0 ){
+        fig <-fig %>% add_trace(y = data$frequency[i:(i+1)], x=data$date[i:(i+1)], name = NULL,  mode = 'lines',yaxis = "y2",color = I("green"))
+      }
+      else{         
+        fig <-fig %>% add_trace(y = data$frequency[i:(i+1)], x=data$date[i:(i+1)], name = NULL,  mode = 'lines',yaxis = "y2",color = I("red"))       
+      }
+    }           
+    fig %>% layout(title = "Statistics about 'mask, N95'", yaxis2 = ay,xaxis = list(title="x"))
+    
     
   })
   fig2 =reactive({
