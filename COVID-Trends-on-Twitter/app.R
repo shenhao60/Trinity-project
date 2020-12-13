@@ -222,6 +222,137 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
   dbGetQuery(conn,query)
 }
 
+
+# get reddit Data function
+getRedditData=function(conn,keywords=NULL,
+                        period=c('2020-03-29','2020-04-30')){
+  dbquery=paste("SELECT CoronavirusReddit.*,sentiment_score ",
+                "FROM CoronavirusReddit ",
+                "LEFT JOIN RedditSentiment ON ",
+                "CoronavirusReddit.status_id=",
+                "RedditSentiment.status_id ",sep="")
+
+  # Add keywords conditions according to 'keywords' 
+  if(length(keywords==0)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(length(period)!=2){
+    period_query=''
+  }
+  else{
+    period_query=paste(" (strftime('%Y-%m-%d',created_at)>=",
+                       "strftime('%Y-%m-%d','",period[1],"') ",
+                       "AND strftime('%Y-%m-%d',created_at)<=",
+                       "strftime('%Y-%m-%d','",period[2],"')) ",
+                       sep="")
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste(dbquery,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",keywords_query,sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste(dbquery," WHERE",period_query,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",period_query,"AND",keywords_query,sep="")
+    }
+  }
+  # Obtain Data
+  dbGetQuery(conn,query)
+}
+
+
+
+## Get trend function
+
+getRedditTrend=function(conn,keywords=NULL,
+                         period=c('2020-03-29','2020-04-30')){
+  dbquery=paste("SELECT strftime('%Y-%m-%d',created_at) AS date,",
+                "count(*) AS number, ",
+                "avg(sentiment_score) AS sentiment_score ",
+                "FROM CoronavirusReddit ",
+                "LEFT JOIN RedditSentiment ON ",
+                "CoronavirusReddit.status_id=",
+                "RedditSentiment.status_id",sep="")
+  group_query="GROUP BY strftime('%Y-%m-%d',created_at)"
+  
+  # Add keywords conditions according to 'keywords' 
+  if(is.null(keywords)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(is.null(period)){
+    period_query=''
+  }
+  else{
+    if(length(period)==2){
+      period_query=paste(" (strftime('%Y-%m-%d',created_at)>=",
+                         "strftime('%Y-%m-%d','",period[1],"') ",
+                         "AND strftime('%Y-%m-%d',created_at)<=",
+                         "strftime('%Y-%m-%d','",period[2],"')) ",
+                         sep="")
+    }
+    else{
+      stop("The time period should be a vector with length 2.") 
+    }
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste(dbquery,group_query,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",keywords_query,group_query,sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste(dbquery," WHERE",period_query,group_query,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",period_query,"AND",keywords_query,
+                  group_query,sep="")
+    }
+  }
+  # Obtain Data
+  dbGetQuery(conn,query)
+  
+}
+
+dbpathr="Covid-reddit-en.db"
+connr=dbConnect(SQLite(),dbpathr)
+
 # connect to database
 
 dbpath="Covid-tweets-en.db"
@@ -270,22 +401,31 @@ server <- function(input,output) {
   # get twitter data with giving keywords and time
   # using plotly package to make a plot that both have death, sentiment and frequency
   fig1=reactive({
-    data=getTwitterTrend(conn,geoinfo = NULL,keywords=input$text)%>%
+    input=input$text%>%
+      str_split('#')%>%
+      .[[1]]
+    data=getTwitterTrend(conn,geoinfo = NULL,keywords=input)%>%
       {data.frame(date=spread_data$date,
                   positiveIncrease=spread_data$positiveIncrease,
                   frequency=.$number,
                   sentiment=.$sentiment_score)}
-    fig <- plot_ly(data, x = ~date, y = ~positiveIncrease, name = 'positiveincrease', type = 'scatter', mode = 'lines+markers') 
-    for(i in 1:32){
-      if((data$sentiment[i]+data$sentiment[i+1])/2 >0 ){
-        fig <-fig %>% add_trace(y = data$frequency[i:(i+1)], x=data$date[i:(i+1)], name = NULL,  mode = 'lines',yaxis = "y2",color = I("green"))
-      }
-      else{         
-        fig <-fig %>% add_trace(y = data$frequency[i:(i+1)], x=data$date[i:(i+1)], name = NULL,  mode = 'lines',yaxis = "y2",color = I("red"))       
-      }
-    }           
-    fig %>% layout(title = "Statistics about 'mask, N95'", yaxis2 = ay,xaxis = list(title="x"))
+
+    fig=plot_ly(data,x=~date,y=~positiveIncrease,color=I('black'),
+                name='positiveIncrease',type ='scatter',mode='lines+markers') 
+    n=nrow(data)
+    color=data$sentiment%>%
+      {(.[1:(n-1)]+.[2:n])/2}%>%
+      {ifelse(.>0,'green','red')}
     
+    fig=fig%>%
+      add_trace(x=data$date[1:2],y=data$frequency[1:2],color=I('blue'),
+                name=input[1],mode='lines+markers',yaxis="y2",
+                visible='legendonly')
+    for(i in 1:(n-1))
+      fig=fig%>%
+        add_trace(x=data$date[i:(i+1)],y=data$frequency[i:(i+1)],color=I(color[i]),
+                  showlegend=F,mode='lines+markers',yaxis="y2")
+    fig%>%layout(title="Twitter Sentiment trends",yaxis2=ay,xaxis=list(title="x"))
     
   })
   fig2 =reactive({

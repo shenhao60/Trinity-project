@@ -3,3 +3,6 @@
 .RData
 .Ruserdata
 COVID-Trends-on-Twitter/Covid-tweets-en.db
+COVID-Trends-on-Twitter/Covid-reddit-en.db
+COVID-Trends-on-Twitter/CovidDataWithTweets&Reddit.zip
+*.db
