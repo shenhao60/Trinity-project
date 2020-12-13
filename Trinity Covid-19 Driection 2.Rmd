@@ -9,8 +9,7 @@ output: html_notebook
 * The database can be downloand from [OneDrive](https://1drv.ms/u/s!AtoA-RMyLpf2hO1rO82pP2y8OMfg-g?e=azfJ44)
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet,tidytext,lubridate,rjson,plotly,pacman,maps,tmap,sp,revgeo,DT
-        )
+pacman::p_load(libraryshiny,tidyverse,lubridate,DBI,RSQLite,plotly)
 dbpath="/Users/mac/Desktop/Covid-tweets-en.db"
 conn=dbConnect(SQLite(),dbpath)
 ```
@@ -95,6 +94,7 @@ dbDisconnect(conn)
 
 ## Get data function
 ```{r}
+# get Twitter Data function
 getTwitterData=function(conn,geoinfo=T,keywords=NULL,
                         period=c('2020-03-29 00:00:00','2020-04-30 23:59:59')){
   # Select table of database according to 'geoinfo'
@@ -162,15 +162,18 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
     }
   }
   # Obtain Data
- dbGetQuery(conn,query)
+  dbGetQuery(conn,query)
 }
+
 ```
 
 
 ## Get trend function
 ```{r}
+## Get trend function
+
 getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
-                       period=c('2020-03-29 00:00:00','2020-04-30 23:59:59')){
+                         period=c('2020-03-29 00:00:00','2020-04-30 23:59:59')){
   # Add trend cconditions according to 'trend'
   if(trend=='day'){
     trend_query=c("'%Y-%m-%d'","date")
@@ -188,7 +191,7 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
       }
     }
   }
-    # Select table of database according to 'geoinfo'
+  # Select table of database according to 'geoinfo'
   if(is.null(geoinfo)){
     geoinfo_query=paste("SELECT strftime(",trend_query[1],
                         ",created_at) AS ",trend_query[2],", ",
@@ -203,19 +206,19 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
   }
   else{
     if(geoinfo=='country'){
-    geoinfo_query=paste("SELECT strftime(",trend_query[1],
-                        ",created_at) AS ",trend_query[2],", ",
-                        "count(*) AS number, country, ",
-                        "avg(sentiment_score) AS sentiment_score ",
-                        "FROM CoronavirusTweetsGeo ",
-                        "LEFT JOIN TweetsGeoSentiment ON ",
-                        "CoronavirusTweetsGeo.status_id=",
-                        "TweetsGeoSentiment.status_id ",
-                        "LEFT JOIN GeoDetail ON ",
-                        "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
-                        "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",sep="")
-    group_query=paste(" GROUP BY strftime(",trend_query[1],
-                      ",created_at),country",sep="")
+      geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                          ",created_at) AS ",trend_query[2],", ",
+                          "count(*) AS number, country, ",
+                          "avg(sentiment_score) AS sentiment_score ",
+                          "FROM CoronavirusTweetsGeo ",
+                          "LEFT JOIN TweetsGeoSentiment ON ",
+                          "CoronavirusTweetsGeo.status_id=",
+                          "TweetsGeoSentiment.status_id ",
+                          "LEFT JOIN GeoDetail ON ",
+                          "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
+                          "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",sep="")
+      group_query=paste(" GROUP BY strftime(",trend_query[1],
+                        ",created_at),country",sep="")
     }
     else{
       if(geoinfo=='state'){
@@ -247,8 +250,8 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
                               "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
                               "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",
                               sep="")
-           group_query=paste(" GROUP BY strftime(",trend_query[1],
-                             ",created_at),country,state,city",sep="")
+          group_query=paste(" GROUP BY strftime(",trend_query[1],
+                            ",created_at),country,state,city",sep="")
         }
         else{
           stop("The geoinfo can only be 'NULL', 'city', 'state' or 'country'.")
@@ -256,8 +259,11 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
       }
     }
   }
-  
-  # Add keywords conditions according to 'keywords' 
+```
+
+
+```{r}
+ # Add keywords conditions according to 'keywords' 
   if(is.null(keywords)){
     keywords_query=''
   }
@@ -279,11 +285,11 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
   }
   else{
     if(length(period)==2){
-          period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
-                       "strftime('%Y-%m-%d %H:%M:%S','",period[1],"') ",
-                       "AND strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
-                       "strftime('%Y-%m-%d %H:%M:%S','",period[2],"')) ",
-                       sep="")
+      period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+                         "strftime('%Y-%m-%d %H:%M:%S','",period[1],"') ",
+                         "AND strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
+                         "strftime('%Y-%m-%d %H:%M:%S','",period[2],"')) ",
+                         sep="")
     }
     else{
       stop("The time period should be a vector with length 2.") 
@@ -308,126 +314,38 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
     }
   }
   # Obtain Data
- dbGetQuery(conn,query)
+  dbGetQuery(conn,query)
 }
-```
 
+# connect to database
 
-## Examples
-```{r}
-# connect to data base
+dbpath="/Users/mac/Desktop/Covid-tweets-en.db"
 conn=dbConnect(SQLite(),dbpath)
-# get twitter data with geo information
-tweetsGeo=getTwitterData(conn,geoinfo = T,period = NULL)
-# get twitter montly data with geo information
-tweetsMonthlyGeo=getTwitterTrend(conn,geoinfo = 'country',trend='month',period=NULL)
-# get twitter data with giving keywords
-tweets=getTwitterData(conn,geoinfo = F,keywords = c('mask','N95','口罩'))
-# get twitter daily trends giving keywords
-tweetsDaily=getTwitterTrend(conn,geoinfo = NULL,keywords = c('mask','N95','口罩'))
 
-# disconnect data base
-dbDisconnect(conn)
-# Release memory
-rm(tweetsGeo,tweetsMonthlyGeo,tweets,tweetsDaily)
-gc()
-```
+# load spread data
+spread_data=read.csv("/Users/mac/Desktop/shiny/us_covid19_daily.csv",header=TRUE)%>%
+  transmute(date=ymd(date),
+            positiveIncrease=positiveIncrease,
+            deathIncrease=deathIncrease)%>%
+  arrange(desc(date))%>%
+  .[68:100,]
 
-# The sentiment analysis part
-```{r}
-# For English tweets in United States
-getEnScore <- function(DF, keyword){
-  DFsub <- DF %>%
-    filter(lang=="en"&country_code=="US")
-  
-  DFsub$date <- gsub("T.*", "", DFsub$created_at)
-  
-  wordDF <- DFsub %>%
-    unnest_tokens(word, text) %>%
-    anti_join(stop_words) 
-  
-  scoreDF <- wordDF %>%
-    inner_join(get_sentiments("bing")) %>%
-    count(status_id, sentiment) %>%
-    spread(sentiment, n)
-  scoreDF[is.na(scoreDF)] <- 0
-  scoreDF <- scoreDF %>%
-    mutate(sentiment_score=(positive-negative)/(positive+negative)) 
-  
-  tweetScoreDF <- right_join(DFsub, scoreDF, by="status_id")
-  
-  if(length(keyword)!=1){
-    keyword <- paste(keyword, collapse="|")
-  }
-  keywordDF <- tweetScoreDF %>%
-    filter(grepl(keyword, text))
-  
-  return(
-    keywordDF %>%
-      group_by(date) %>%
-      summarize(overall_sentiment=mean(sentiment_score))
-  )
-}
+Geoplot=getTwitterTrend(conn,geoinfo='state',period=NULL)%>%
+  filter(country=='United States')%>%
+  {merge(read.csv("/Users/mac/Desktop/shiny/us_states_daily.csv",header=TRUE),.,by="state")}%>%
+  {mutate(.,hover=with(.,paste(state,
+                            "<br> <br> Positive:",positive,
+                            "<br> death:",death,
+                            "<br> number of tweets",number,
+                            "<br> sentiment score of this state",sentiment_score)))}
 
-```
+ay=list(tickfont=list(color="red"),overlaying="y",side="right",title="frequency")
 
-```{r}
-# For all languages
-# Create sentiment lexicon dictionary
-# https://www.kaggle.com/rtatman/sentiment-lexicons-for-81-languages
-
-langCode <- read.csv("SentimentLexicons/correctedMetadata.csv", header=TRUE)$`Wikipedia.Language.Code`
-
-negTerms <- data_frame(lang=vector(), word=vector())
-posTerms <- data_frame(lang=vector(), word=vector())
-
-for(i in 1:length(langCode)){
-  negTerms <- rbind(negTerms, data_frame(lang=langCode[i], word=read.delim(file=paste0("SentimentLexicons/negative_words_", langCode[i], ".txt", sep=""), header=FALSE, check.names = FALSE)))
-  posTerms <- rbind(posTerms, data_frame(lang=langCode[i], word=read.delim(file=paste0("SentimentLexicons/positive_words_", langCode[i], ".txt", sep=""), header=FALSE, check.names = FALSE)))
-}
-negTerms$sentiment <- "negative"
-posTerms$sentiment <- "positive"
-
-mySentimentLexicon <- bind_rows(negTerms, posTerms)
-mySentimentLexicon <- as.data.frame(mySentimentLexicon)
-
-# colnames(mySentimentLexicon) <- c("lang", "word", "sentiment")
-# rownames(mySentimentLexicon) <- 1:nrow(mySentimentLexicon)
-
-# Function
-getScore <- function(DF, selectedLang, keyword){
-  DFsub <- DF %>%
-    filter(lang==selectedLang)
-  
-  DFsub$date <- gsub("T.*", "", DFsub$created_at)
-  
-  wordDF <- DFsub %>%
-    unnest_tokens(word, text) %>%
-    # anti_join(fromJSON(file=paste0("stopwords-json-master/dist/", selectedLang, ".json", sep="")))
-    anti_join(stopwords(language = selectedLang, source = "stopwords-iso"))
-  
-  scoreDF <- wordDF %>%
-    inner_join(mySentimentLexicon, by=c("lang", "word")) %>%
-    count(status_id, sentiment) %>%
-    spread(sentiment, n)
-  scoreDF[is.na(scoreDF)] <- 0
-  scoreDF <- scoreDF %>%
-    mutate(sentiment_score=(positive-negative)/(positive+negative)) 
-  
-  tweetScoreDF <- right_join(DFsub, scoreDF, by="status_id")
-  
-  if(length(keyword)!=1){
-    keyword <- paste(keyword, collapse="|")
-  }
-  keywordDF <- tweetScoreDF %>%
-    filter(grepl(keyword, text))
-  
-  return(
-    keywordDF %>%
-      group_by(date) %>%
-      summarize(overall_sentiment=mean(sentiment_score))
-  )
-}
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  showlakes = TRUE,
+  lakecolor = toRGB('white'))
 ```
 
 
@@ -439,12 +357,11 @@ Visualization
 # connect to data base
 conn=dbConnect(SQLite(),dbpath)
 # get twitter data with geo information
-tweetsGeo=getTwitterData(conn,period = NULL)
+# tweetsGeo=getTwitterData(conn,period = NULL)
+tweetsGeo=getTwitterData(conn,period = NULL,keywords = c('mask','N95'))
 # get twitter data with giving keywords and time
 
 mask <- getTwitterTrend(conn,geoinfo = NULL,keywords = c('mask','N95'))
-mask <- mutate(mask,
-       x =c(1:33) )
 
 # making a word frequent plot of mask related data.
 ggplot(data = mask, aes(x = x, y = number)) +
@@ -481,22 +398,140 @@ ay <- list(
   overlaying = "y",
   side = "right",
   title = "the frequency of "
-)
+  )
 
-fig <- plot_ly(data, x = ~date, y = ~positiveincrease, name = 'positiveincrease', type = 'scatter', mode = 'lines+markers') 
+
+
+fig <- plot_ly(data, x = ~date, y = ~positiveincrease, name = 'positiveincrease', mode = 'lines+markers',color = I("black")) 
 for(i in 1:32)
-  if((sentiment[i]+sentiment[i+1])/2 >0 ){
-    fig <-fig %>% add_trace(y = frequency[i:(i+1)], x=date[i:(i+1)], name = NULL,  mode = 'lines',yaxis = "y2",color = I("green"))
+  if((sentiment[i]+sentiment[i+1])/2 > 0 ){
+    fig <-fig %>% add_trace(y = frequency[i:(i+1)], x=date[i:(i+1)], showlegend = FALSE, mode = 'lines', marker=list(symbol = 8,size=10), yaxis = "y2",color = I("green")) 
   }else{
-              
-    fig <-fig %>% add_trace(y = frequency[i:(i+1)], x=date[i:(i+1)], name = NULL,  mode = 'lines',yaxis = "y2",color = I("red"))       
+    fig <-fig %>% add_trace(y = frequency[i:(i+1)], x=date[i:(i+1)], name = NA, showlegend = FALSE,  mode = 'lines+markers', marker=list(symbol = 2,size=10),yaxis = "y2",color = I("red"))       
     }
-              
 fig <- fig %>% layout(
   title = "Statistics about 'mask, N95'", yaxis2 = ay,
   xaxis = list(title="x"))
-fig
+fig              
 
+
+
+
+input=input$text%>%
+      str_split('#')%>%
+      .[[1]]
+    data=getTwitterTrend(conn,geoinfo = NULL,keywords=input)%>%
+      {data.frame(date=spread_data$date,
+                  positiveIncrease=spread_data$positiveIncrease,
+                  frequency=.$number,
+                  sentiment=.$sentiment_score)}
+
+    fig=plot_ly(data,x=~date,y=~positiveIncrease,color=I('black'),
+                name='positiveIncrease',type ='scatter',mode='lines+markers') 
+    n=nrow(data)
+    color=data$sentiment%>%
+      {(.[1:(n-1)]+.[2:n])/2}%>%
+      {ifelse(.>0,'green','red')}
+    
+    fig=fig%>%
+      add_trace(x=data$date[1:2],y=data$frequency[1:2],color=I('blue'),
+                name=input[1],mode='lines+markers',yaxis="y2",
+                visible='legendonly')
+    for(i in 1:(n-1))
+      fig=fig%>%
+        add_trace(x=data$date[i:(i+1)],y=data$frequency[i:(i+1)],color=I(color[i]),
+                  marker=list(symbol = 2,size=10),showlegend=F,mode='lines+markers',yaxis="y2")
+    fig%>%layout(title="Twitter Sentiment trends",yaxis2=ay,xaxis=list(title="x"))
+    
+
+
+  
+# 疫情数据
+spread_data=read.csv('/Users/mac/Desktop/Trinity/us_covid19_daily.csv')%>%
+  transmute(date=ymd(date),positiveIncrease=positiveIncrease,
+            deathIncrease=deathIncrease)
+# 关键词1数据
+input='Mask#N95#口罩'%>%
+  str_split('#')%>%
+  .[[1]]
+data1=getTwitterTrend(conn,geoinfo = NULL,keywords=input)%>%
+  mutate(date=ymd(date))
+# 关键词2数据
+input='lockdown#stay home'%>%
+  str_split('#')%>%
+  .[[1]]
+
+data2=getTwitterTrend(conn,geoinfo = NULL,keywords=input)%>%
+  mutate(date=ymd(date))
+spread_end=max(max(data1$date),max(data2$date))
+spread_start=min(min(data1$date),min(data2$date))
+
+data_1 <- data1%>%
+  left_join(spread_data,'date')
+
+data_2 <- merge(data1,data2,by="date")%>%
+   left_join(spread_data,'date')
+#data1
+ fig=plot_ly(data_1,x=~date,y=~positiveIncrease,color=I('black'),
+                name='positiveIncrease',type ='scatter',mode='lines+markers') 
+    n=nrow(data_1)
+    color=data$sentiment%>%
+      {(.[1:(n-1)]+.[2:n])/2}%>%
+      {ifelse(.>0,'green','red')}
+    
+    fig=fig%>%
+      add_trace(x=data_1$date[1:2],y=data_1$frequency[1:2],color=I('blue'),
+                name=input[1],mode='lines+markers',yaxis="y2",
+                visible='legendonly')
+    for(i in 1:(n-1))
+      fig=fig%>%
+        add_trace(x=data_1$date[i:(i+1)],y=data_1$frequency[i:(i+1)],color=I(color[i]),
+                  marker=list(symbol = 2,size=10),showlegend=F,mode='lines+markers',yaxis="y2")
+    fig%>%layout(title="Twitter Sentiment trends",yaxis2=ay,xaxis=list(title="x"))
+    
+#data2
+ay <- list(
+  tickfont = list(color = "blue"),
+  overlaying = "y",
+  side = "right",
+  title = "the frequency of input"
+  )    
+   
+    fig=plot_ly(data_2,x=~date,y=~positiveIncrease,color=I('black'),
+                name='positiveIncrease',type ='scatter',mode='lines+markers') 
+    n=nrow(data_2)
+    color.x=data$sentiment_score.x%>%
+      {(.[1:(n-1)]+.[2:n])/2}%>%
+      {ifelse(.>0,'green','red')}
+    color.y=data$sentiment_score.y%>%
+      {(.[1:(n-1)]+.[2:n])/2}%>%
+      {ifelse(.>0,'green','red')}
+    
+    fig=fig%>%
+      add_trace(x=data_2$date[1:2],y=data_2$frequency.x[1:2],color=I('blue'),
+                name=input[1],mode='lines+markers',yaxis="y2",
+                visible='legendonly')
+    for(i in 1:(n-1))
+      fig=fig%>%
+        add_trace(x=data_2$date[i:(i+1)],y=data_2$frequency.x[i:(i+1)],color=I(color.x[i]),
+                  marker=list(symbol = 2,size=10),showlegend=F,mode='lines+markers',yaxis="y2")
+    fig%>%layout(title="Twitter Sentiment trends of mask",yaxis2=ay,xaxis=list(title="x"))
+
+    fig=fig%>%
+      add_trace(x=data_2$date[1:2],y=data_2$frequency.y[1:2],color=I('yellow'),
+                name=input[1],mode='lines+markers',yaxis="y2",
+                visible='legendonly')
+    for(i in 1:(n-1))
+      fig=fig%>%
+        add_trace(x=data_2$date[i:(i+1)],y=data_2$frequency.y[i:(i+1)],color=I(color.y[i]),
+                  marker=list(symbol = 8,size=10),showlegend=F,mode='lines+markers',yaxis="y2")
+    fig%>%layout(title="Twitter Sentiment trends of lockdown",yaxis2=ay,xaxis=list(title="x"))
+    
+  fig  
+    
+    
+    
+    
 ```
 
 # Geom plots
@@ -533,8 +568,7 @@ tweetsGeo_En_1 <- tweetsGeo_En%>%
   mutate(long=as.double(long),
          lat=as.double(lat))%>%
   group_by(state)%>%
-  summarize(sum_states=n(), mean_sentiment=mean(sentiment_score))
-
+  summarize(sum_states=n(), mean_sentiment=mean(sentiment_score),date)
 
 
 # Make the geo plot in ggplot
@@ -564,42 +598,46 @@ g <- list(
   scope = 'usa',
   projection = list(type = 'albers usa'),
   showlakes = TRUE,
-  lakecolor = toRGB('white')
-)
-fig <- plot_geo(Geoplot, locationmode = 'USA-states') 
-fig <- fig %>% add_trace(
-  locations = ~state,
-  type='choropleth',
-  z= ~mean_sentiment,
-  text = ~hover,
-  colors="Reds"
-)
-# Add a title
-fig <- fig %>% layout(title = "sentiment score of each state",geo = g)
-# Final
-fig
-
-```
-
-```{r}
-g <- list(
-  scope = 'usa',
-  projection = list(type = 'albers usa'),
-  showlakes = TRUE,
   lakecolor = toRGB('white'))
-fig <- plot_geo(Geoplot, locationmode = 'USA-states') 
-fig <- fig %>% add_trace(
-  locations = ~state,
-  type='choropleth',
-  z= ~death,
-  text = ~hover,
-  colors="Purples"
-)
-# Add a title
-fig <- fig %>% layout(title = "sentiment score of each state",geo=g)
-# Final
-fig
+
+
+
+# create data
+conn=dbConnect(SQLite(),dbpath)
+Geoplot=getTwitterTrend(conn,geoinfo='state',period=NULL,trend = "month")%>%
+  filter(country=='United States')%>%
+  mutate(month=as.integer(month))%>%
+  {merge(read.csv("/Users/mac/Desktop/Trinity/us_states_daily.csv",header=TRUE),.,by="state")}%>%
+  {mutate(.,hover=with(.,paste(state,
+                               "<br> <br> Positive:",positive,
+                               "<br> Death:",death,
+                               "<br> Number of Tweets",number,
+                               "<br> Sentiment Score",
+                               round(sentiment_score,3))))}
+# disconnect data base
+dbDisconnect(conn)
+# create steps and plot all traces
+fig=plot_geo(locationmode='USA-states')
+n=Geoplot$month%>%unique()%>%length()
+visible=c(T,rep(F,n-1))
+steps=list()
+for (i in 1:n) {
+  fig=Geoplot[Geoplot$month==i,]%>%
+    {add_trace(fig,locations=.$state,z=.$sentiment_score,text=.$hover,
+               hoverinfo='text',visible=visible[i],
+               type='choropleth',colors="RdBu")}
+  steps[[i]]=list(args=list('visible',c(rep(F,i-1),T,rep(F,n-i))),
+                  label=month(i,T),method='restyle')
+}  
+# add slider control to plot
+fig%>%layout(title="Sentiment Score of States",
+             geo=list(scope='usa',projection=list(type='albers usa'),
+                      showlakes=T,lakecolor=toRGB('white')),
+             sliders=list(list(active=1,currentvalue=list(prefix="Month: "),
+                               steps=steps)))%>%hide_colorbar()
+
 ```
+
 
 
 
