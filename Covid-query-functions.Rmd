@@ -1,21 +1,23 @@
 ---
 title: "Covid-tweets  Hao"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 ## Initial setting
 * The database can be downloand from [OneDrive](https://1drv.ms/u/s!AtoA-RMyLpf2hO1rO82pP2y8OMfg-g?e=azfJ44)
 ```{r message=FALSE, warning=FALSE}
 pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet)
-dbpath="../Covid-tweets-en.db"
-conn=dbConnect(SQLite(),dbpath,auto)
 ```
 
-## Geo data and April data collections
+## Geo data and April data collections 
 * Note: This chunk needn't run again.
 ```{r}
 # Select all tweets in April 2020
 if(F){
+dbpath="../Covid-tweets-en.db"
+conn=dbConnect(SQLite(),dbpath,auto)
 paste("CREATE TABLE CoronavirusTweets",
       " AS SELECT * FROM CoronavirusTweetsCsv",
       " WHERE (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
@@ -84,8 +86,8 @@ paste("CREATE INDEX CT_status_id ON CoronavirusTweets(status_id);",
   "CREATE INDEX CTG_lat_long ON CoronavirusTweetsGeo(lat,lng);",
   "CREATE UNIQUE INDEX GD_lat_long ON GeoDetail(lat,lng)")%>%
   dbSendQuery(conn,.)
-}
 dbDisconnect(conn)
+}
 ```
 
 ## Get data function
@@ -112,7 +114,7 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
                         "TweetsSentiment.status_id",sep="")
   }
   # Add keywords conditions according to 'keywords' 
-  if(length(keywords==0)){
+  if(is.null(keywords)){
     keywords_query=''
   }
   else{
@@ -128,16 +130,23 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
     keywords_query=paste(keywords_query,") ",sep="")
   }
   # Add period conditions according to 'period'
-  if(length(period)!=2){
+
+  if(is.null(period)){
     period_query=''
   }
   else{
-    period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+    if(length(period)==2){
+          period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
                        "strftime('%Y-%m-%d %H:%M:%S','",period[1],"') ",
                        "AND strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
                        "strftime('%Y-%m-%d %H:%M:%S','",period[2],"')) ",
                        sep="")
+    }
+    else{
+      stop("The time period should be a vector with length 2.") 
+    }
   }
+  
   # Write SQL
   if(period_query==''){
     if(keywords_query==''){
@@ -311,6 +320,7 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
 ## Examples
 ```{r}
 # connect to data base
+dbpath="COVID-Trends-on-Twitter/Covid-tweets-en.db"
 conn=dbConnect(SQLite(),dbpath)
 # get twitter data with geo information
 tweetsGeo=getTwitterData(conn,geoinfo = T,period = NULL)
@@ -327,4 +337,155 @@ rm(tweetsGeo,tweetsMonthlyGeo,tweets,tweetsDaily)
 gc()
 ```
 
+```{r}
+# get reddit Data function
+getRedditData=function(conn,keywords=NULL,
+                        period=c('2020-03-29','2020-04-30')){
+  dbquery=paste("SELECT CoronavirusReddit.*,sentiment_score ",
+                "FROM CoronavirusReddit ",
+                "LEFT JOIN RedditSentiment ON ",
+                "CoronavirusReddit.status_id=",
+                "RedditSentiment.status_id ",sep="")
+
+  # Add keywords conditions according to 'keywords' 
+  if(is.null(keywords)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(length(period)!=2){
+    period_query=''
+  }
+  else{
+    period_query=paste(" (strftime('%Y-%m-%d',created_at)>=",
+                       "strftime('%Y-%m-%d','",period[1],"') ",
+                       "AND strftime('%Y-%m-%d',created_at)<=",
+                       "strftime('%Y-%m-%d','",period[2],"')) ",
+                       sep="")
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste(dbquery,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",keywords_query,sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste(dbquery," WHERE",period_query,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",period_query,"AND",keywords_query,sep="")
+    }
+  }
+  # Obtain Data
+  dbGetQuery(conn,query)
+}
+
+
+```
+
+```{r}
+## Get trend function
+
+getRedditTrend=function(conn,keywords=NULL,
+                         period=c('2020-03-29','2020-04-30')){
+  dbquery=paste("SELECT strftime('%Y-%m-%d',created_at) AS date,",
+                "count(*) AS number, ",
+                "avg(sentiment_score) AS sentiment_score ",
+                "FROM CoronavirusReddit ",
+                "LEFT JOIN RedditSentiment ON ",
+                "CoronavirusReddit.status_id=",
+                "RedditSentiment.status_id ",sep="")
+  group_query="GROUP BY strftime('%Y-%m-%d',created_at)"
+  
+  # Add keywords conditions according to 'keywords' 
+  if(is.null(keywords)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(is.null(period)){
+    period_query=''
+  }
+  else{
+    if(length(period)==2){
+      period_query=paste(" (strftime('%Y-%m-%d',created_at)>=",
+                         "strftime('%Y-%m-%d','",period[1],"') ",
+                         "AND strftime('%Y-%m-%d',created_at)<=",
+                         "strftime('%Y-%m-%d','",period[2],"')) ",
+                         sep="")
+    }
+    else{
+      stop("The time period should be a vector with length 2.") 
+    }
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste(dbquery,group_query,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",keywords_query,group_query,sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste(dbquery," WHERE",period_query,group_query,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",period_query,"AND",keywords_query,
+                  group_query,sep="")
+    }
+  }
+  # Obtain Data
+  dbGetQuery(conn,query)
+  
+}
+```
+
+# Examples
+```{r}
+# connect to data base
+dbpathr="COVID-Trends-on-Twitter/Covid-reddit-en.db"
+connr=dbConnect(SQLite(),dbpathr)
+# get reddit data with giving keywords with default periods
+reddit=getRedditData(connr,keywords = c('mask','N95','口罩'))
+# get reddit daily trends giving keywords with default periods
+redditDaily=getRedditTrend(connr,keywords = c('mask','N95','口罩'))
+# get reddit data with giving keywords
+redditAll=getRedditData(connr,keywords = c('mask','N95','口罩'),period = NULL)
+# get reddit daily trends giving keywords
+redditDailyAll=getRedditTrend(connr,keywords = c('mask','N95','口罩'),period = NULL)
+
+# disconnect data base
+dbDisconnect(connr)
+# Release memory
+rm(reddit,redditDaily,redditAll,redditDailyAll)
+gc()
+```
 
