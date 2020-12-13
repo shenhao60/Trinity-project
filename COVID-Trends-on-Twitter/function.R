@@ -1,98 +1,10 @@
----
-title: "Covid-tweets  Hao"
-output:
-  html_document:
-    df_print: paged
----
+# There are four functions in this document:
+# 'getTwitterData', 'getTwitterTrend', 'getRedditData', 'getRedditTrend'
 
-## Initial setting
-* The database can be downloand from [OneDrive](https://1drv.ms/u/s!AtoA-RMyLpf2hO1rO82pP2y8OMfg-g?e=azfJ44)
-```{r message=FALSE, warning=FALSE}
-pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet)
-```
-
-## Geo data and April data collections 
-* Note: This chunk needn't run again.
-```{r}
-# Select all tweets in April 2020
-if(F){
-dbpath="../Covid-tweets-en.db"
-conn=dbConnect(SQLite(),dbpath,auto)
-paste("CREATE TABLE CoronavirusTweets",
-      " AS SELECT * FROM CoronavirusTweetsCsv",
-      " WHERE (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
-      "strftime('%Y-%m-%d %H:%M:%S','2020-03-29 00:00:00'))",
-      " AND (strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
-      "strftime('%Y-%m-%d %H:%M:%S','2020-04-29 23:59:59'))",sep='')%>%
-  dbSendQuery(conn,.)
-  
-April_tweet=paste("SELECT Tweet_ID FROM CoronavirusTweets",sep='')%>%
-  dbGetQuery(conn,.)
-# Set Twitter developer account
-create_token(app='MSSP-An-Auxiliary-Tool',
-             consumer_key='ORvbA3CEOP06hi9MHfz7yknwV',
-             consumer_secret='nAy2PRkiV4AYZ0NvHAF6Iw0IBFrttWMKTuxXbUWN4bcZnMpTQR',
-             access_token='1328377313562509313-j1iSFuJLLo3FL768jdnHKe1fzmcWnS',
-             access_secret='oJIhGoThBNSBSMLQBo3AxS5kcLrqq8sCjx6OIPX9NRmPT')
-for(i in 1:ceiling(nrow(April_tweet)/90000)) {
-  rl=rate_limit("lookup_statuses")
-  if(rl%>%select(remaining)!=900){
-    rl%>%select(reset)*60%>%ceiling()%>%Sys.sleep()
-  }
-  april_tweet=lookup_statuses(April_tweet$Tweet_ID[(900*i):nrow(April_tweet)])
-  if(i==1){April_tweet=april_tweet}else{April_tweet=rbind(April_tweet,april_tweet)}
-}
-  April_tweet%>%
-  select(status_id,user_id,screen_name,created_at,text,is_quote,
-         is_retweet,favourites_count,retweet_count,followers_count,
-         friends_count,lang)%>%
-  dbWriteTable(conn,'CoronavirusTweets',.)
-}
-# Select all tweets with geo information from 202001 to 202011
-if(F){
-paste("CREATE TABLE CoronavirusTweetsGeo",
-      " AS SELECT * FROM CoronavirusTweetsCsv",
-      " WHERE Geolocation_coordinate='YES'",sep='')%>%
-  dbSendQuery(conn,.)
-
-Geo_tweet=paste("SELECT Tweet_ID FROM CoronavirusTweetsGeo",sep='')%>%
-  dbGetQuery(conn,.)
-
-
-for(i in 1:ceiling(nrow(Geo_tweet)/90000)) {
-  rl=rate_limit("lookup_statuses")
-  if(rl%>%select(remaining)!=900){
-    rl%>%select(reset)*60%>%ceiling()%>%Sys.sleep()
-  }
-  geo=lookup_statuses(Geo_tweet$Tweet_ID[(900*i):nrow(Geo_tweet)])
-  if(i==1){Geo=geo}else{Geo=rbind(Geo,geo)}
-}
-lat_lng(Geo)%>%
-  select(status_id,user_id,screen_name,created_at,text,is_quote,
-         is_retweet,favourites_count,retweet_count,followers_count,
-         friends_count,lang,place_full_name,place_type,country_code,
-         place_name,country,lat,lng)%>%
-  dbWriteTable(conn,'CoronavirusTweetsGeo',.)
-
-# Delete initial collection of covid tweets csv files table
-"DROP TABLE CoronavirusTweetsCsv" %>%
-  dbSendQuery(conn,.)
-# Create index to accelerate query
-paste("CREATE INDEX CT_status_id ON CoronavirusTweets(status_id);",
-  "CREATE INDEX CTG_status_id ON CoronavirusTweetsGeo(status_id);",
-  "CREATE INDEX TS_status_id ON TweetsSentiment(status_id);",
-  "CREATE INDEX TGS_status_id ON TweetsGeoSentiment(status_id);",
-  "CREATE INDEX CTG_lat_long ON CoronavirusTweetsGeo(lat,lng);",
-  "CREATE UNIQUE INDEX GD_lat_long ON GeoDetail(lat,lng)")%>%
-  dbSendQuery(conn,.)
-dbDisconnect(conn)
-}
-```
-
-## Get tweets data function
-```{r}
+# Get tweets data function
 getTwitterData=function(conn,geoinfo=T,keywords=NULL,
                         period=c('2020-03-29 00:00:00','2020-04-01 23:59:59')){
+  
   # Select table of database according to 'geoinfo'
   if(geoinfo){
     geoinfo_query=paste("SELECT CoronavirusTweetsGeo.*,",
@@ -112,6 +24,7 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
                         "CoronavirusTweets.status_id=",
                         "TweetsSentiment.status_id",sep="")
   }
+  
   # Add keywords conditions according to 'keywords' 
   if(is.null(keywords)){
     keywords_query=''
@@ -128,8 +41,8 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
     }
     keywords_query=paste(keywords_query,") ",sep="")
   }
+  
   # Add period conditions according to 'period'
-
   if(is.null(period)){
     period_query=''
   }
@@ -164,16 +77,15 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
                   period_query,"AND",keywords_query,sep="")
     }
   }
+  
   # Obtain Data
- dbGetQuery(conn,query)
-
+  dbGetQuery(conn,query)
 }
-```
 
-## Get tweets trend function
-```{r}
+# Get tweets trend function
 getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
                        period=c('2020-03-29 00:00:00','2020-04-01 23:59:59')){
+  
   # Add trend cconditions according to 'trend'
   if(trend=='day'){
     trend_query=c("'%Y-%m-%d'","date")
@@ -191,7 +103,8 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
       }
     }
   }
-    # Select table of database according to 'geoinfo'
+  
+  # Select table of database according to 'geoinfo'
   if(is.null(geoinfo)){
     geoinfo_query=paste("SELECT strftime(",trend_query[1],
                         ",created_at) AS ",trend_query[2],", ",
@@ -276,6 +189,7 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
     }
     keywords_query=paste(keywords_query,") ",sep="")
   }
+  
   # Add period conditions according to 'period'
   if(is.null(period)){
     period_query=''
@@ -292,6 +206,7 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
       stop("The time period should be a vector with length 2.") 
     }
   }
+ 
   # Write SQL
   if(period_query==''){
     if(keywords_query==''){
@@ -310,35 +225,15 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
                   group_query,sep="")
     }
   }
+  
   # Obtain Data
- dbGetQuery(conn,query)
+  dbGetQuery(conn,query)
 }
-```
-
-## Examples
-```{r}
-# connect to data base
-dbpath="COVID-Trends-on-Twitter/Covid-tweets-en.db"
-conn=dbConnect(SQLite(),dbpath)
-# get twitter data with geo information
-tweetsGeo=getTwitterData(conn,geoinfo = T,period = NULL)
-# get twitter montly data with geo information
-tweetsMonthlyGeo=getTwitterTrend(conn,geoinfo = 'country',trend='month',period=NULL)
-# get twitter data with giving keywords
-tweets=getTwitterData(conn,geoinfo = F,keywords = c('mask','N95','口罩'))
-# get twitter daily trends giving keywords
-tweetsDaily=getTwitterTrend(conn,geoinfo = NULL,keywords = c('mask','N95','口罩'))
-# disconnect data base
-dbDisconnect(conn)
-# Release memory
-rm(tweetsGeo,tweetsMonthlyGeo,tweets,tweetsDaily)
-gc()
-```
 
 # Get reddit data function
-```{r}
 getRedditData=function(conn,keywords=NULL,
                         period=c('2020-03-29','2020-04-30')){
+  # Initial tables connection
   dbquery=paste("SELECT CoronavirusReddit.*,sentiment_score ",
                 "FROM CoronavirusReddit ",
                 "LEFT JOIN RedditSentiment ON ",
@@ -361,6 +256,7 @@ getRedditData=function(conn,keywords=NULL,
     }
     keywords_query=paste(keywords_query,") ",sep="")
   }
+
   # Add period conditions according to 'period'
   if(length(period)!=2){
     period_query=''
@@ -372,6 +268,7 @@ getRedditData=function(conn,keywords=NULL,
                        "strftime('%Y-%m-%d','",period[2],"')) ",
                        sep="")
   }
+
   # Write SQL
   if(period_query==''){
     if(keywords_query==''){
@@ -389,15 +286,15 @@ getRedditData=function(conn,keywords=NULL,
       query=paste(dbquery," WHERE",period_query,"AND",keywords_query,sep="")
     }
   }
+  
   # Obtain Data
   dbGetQuery(conn,query)
 }
-```
 
 # Get reddit trend function
-```{r}
 getRedditTrend=function(conn,keywords=NULL,
                          period=c('2020-03-29','2020-04-30')){
+  # Initial query of tables connection
   dbquery=paste("SELECT strftime('%Y-%m-%d',created_at) AS date,",
                 "count(*) AS number, ",
                 "avg(sentiment_score) AS sentiment_score ",
@@ -423,6 +320,7 @@ getRedditTrend=function(conn,keywords=NULL,
     }
     keywords_query=paste(keywords_query,") ",sep="")
   }
+
   # Add period conditions according to 'period'
   if(is.null(period)){
     period_query=''
@@ -439,6 +337,7 @@ getRedditTrend=function(conn,keywords=NULL,
       stop("The time period should be a vector with length 2.") 
     }
   }
+
   # Write SQL
   if(period_query==''){
     if(keywords_query==''){
@@ -457,29 +356,7 @@ getRedditTrend=function(conn,keywords=NULL,
                   group_query,sep="")
     }
   }
+
   # Obtain Data
-  dbGetQuery(conn,query)
-  
+  dbGetQuery(conn,query) 
 }
-```
-
-# Examples
-```{r}
-# connect to data base
-dbpathr="COVID-Trends-on-Twitter/Covid-reddit-en.db"
-connr=dbConnect(SQLite(),dbpathr)
-# get reddit data with giving keywords with default periods
-reddit=getRedditData(connr,keywords = c('mask','N95','口罩'))
-# get reddit daily trends giving keywords with default periods
-redditDaily=getRedditTrend(connr,keywords = c('mask','N95','口罩'))
-# get reddit data with giving keywords
-redditAll=getRedditData(connr,keywords = c('mask','N95','口罩'),period = NULL)
-# get reddit daily trends giving keywords
-redditDailyAll=getRedditTrend(connr,keywords = c('mask','N95','口罩'),period = NULL)
-# disconnect data base
-dbDisconnect(connr)
-# Release memory
-rm(reddit,redditDaily,redditAll,redditDailyAll)
-gc()
-```
-
