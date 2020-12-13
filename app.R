@@ -1,13 +1,13 @@
-library(shiny)
+# library(shiny)
 
 library(shinydashboard)
-library(dashboardthemes)
+# library(dashboardthemes)
 
 library(tidyverse)
 library(lubridate)
 library(DBI)
 library(RSQLite)
-library(cartogram)
+# library(cartogram)
 library(revgeo)
 library(rtweet)
 library(tidytext)
@@ -15,9 +15,9 @@ library(rjson)
 library(plotly)
 library(pacman)
 library(maps)
-library(tmap)
-library(sp)
-library(DT)
+# library(tmap)
+# library(sp)
+# library(DT)
 
 dbpath="Covid-tweets-en.db"
 conn=dbConnect(SQLite(),dbpath)
@@ -324,45 +324,47 @@ tweetsGeo=getTwitterData(conn,period = NULL)
 
 
 
-daily <- read.csv(file= "us_covid19_daily.csv", header=TRUE)
-spread_data <- select(daily,date,hospitalizedCumulative,death,deathIncrease,negativeIncrease,positiveIncrease)%>%
-  mutate(date_new=ymd(date))%>%
-  arrange(daily, desc(date_new))
-spread_data <- spread_data[68:100,]
+spread_data=read.csv('us_covid19_daily.csv')%>%
+  transmute(date=ymd(date),positiveIncrease=positiveIncrease,
+            deathIncrease=deathIncrease)
+# spread_data <- spread_data[68:100,]
 
 
 # using plotly package to make a plot that both have death, sentiment and frequency
-positiveIncrease <- spread_data[,6]
+# positiveIncrease <- spread_data[,6]
 
 
-date <-spread_data$date_new
-spread_data$date<- 1:33
+# date <-spread_data$date_new
+# spread_data$date<- 1:33
 
 
+# # tweetsGeo <- tweetsGeo %>%
+# #   group_by(state)%>%
+# #   mutate(sum = n(),
+# #          long=lng)
+# # tweetsGeo_En <- filter(tweetsGeo, country == 'United States')
+# 
+# # summary(tweetsGeo_En$sum)
+# # divide sum of tweets in each state into 4 parts which is 
+# # tweetsGeo_En$cut <- cut(tweetsGeo_En$sum,
+# #                      breaks=c(0,1658,7890,15064,18206),
+# #                     include.lowest = T)
+# # tweetsGeo_En_1 <- tweetsGeo_En%>%
+# #   mutate(long=as.double(long),
+# #          lat=as.double(lat))%>%
+# #   group_by(state)%>%
+# #   summarize(sum_states=n(), mean_sentiment=mean(sentiment_score))
 
-tweetsGeo <- tweetsGeo %>%
-  group_by(state)%>%
-  mutate(sum = n(),
-         long=lng)
-tweetsGeo_En <- filter(tweetsGeo, country == 'United States')
-
-# summary(tweetsGeo_En$sum)
-# divide sum of tweets in each state into 4 parts which is 
-# tweetsGeo_En$cut <- cut(tweetsGeo_En$sum,
-#                      breaks=c(0,1658,7890,15064,18206),
-#                     include.lowest = T)
-tweetsGeo_En_1 <- tweetsGeo_En%>%
-  mutate(long=as.double(long),
-         lat=as.double(lat))%>%
-  group_by(state)%>%
-  summarize(sum_states=n(), mean_sentiment=mean(sentiment_score))
-
-
-Apr40 <- read.csv("us_states_daily.csv")
-Geoplot <- merge(Apr40,tweetsGeo_En_1 , by=c("state"))
-Geoplot$hover <- with(Geoplot, paste(state, '<br>',  '<br>', "Positive:", positive, "<br>","death:", death,"<br>", "number of tweets", sum_states,'<br>', "sentiment score of this state", mean_sentiment)) #put data
-
-
+Geoplot=getTwitterTrend(conn,geoinfo='state',period=NULL,trend = "month")%>%
+filter(country=='United States')%>%
+  mutate(month=as.integer(month))%>%
+  {merge(read.csv("us_states_daily.csv",header=TRUE),.,by="state")}%>%
+  {mutate(.,hover=with(.,paste(state,
+                               "<br> <br> Positive:",positive,
+                               "<br> Death:",death,
+                               "<br> Number of Tweets",number,
+                               "<br> Sentiment Score",
+                               round(sentiment_score,3))))}
 ay =list(
   tickfont = list(color = "red"),
   overlaying = "y",
@@ -384,17 +386,19 @@ body <- dashboardBody(
            ),
            box(width=NULL,
                uiOutput("keywordSelect"),
-               actionButton("plotButton", "plot")
+               actionButton("plotButton", "plot"),
+               # verbatimTextOutput("event")
            )
     ),
     column(9,
-           plotlyOutput("fig1"))
+           plotlyOutput("figTrend"),
+           br())
     
     # Put plots in this column
   ),
   fluidRow(
     column(3,),
-    column(9, plotlyOutput("fig2"))
+    column(9, plotlyOutput("figGeo"))
   )
 )
 ui <- dashboardPage(
@@ -408,12 +412,14 @@ server <- function(input, output) {
   keywordVal <- reactiveValues(word=vector()) 
   # Use keywordSel$word to plot
   keywordSel <- reactiveValues(word=vector()) 
+  # Synonym
+  synSel <- reactiveValues(word=vector())
   
   observeEvent(input$addButton,{
     keywordDF <- data_frame(text=input$keyword)
     keywordDF <- keywordDF %>%
       unnest_tokens(word, text)
-    keywordVal$word <- c(keywordVal$word, keywordDF$word)
+    keywordVal$word <- unique(c(keywordVal$word, keywordDF$word))
   })
   
   observeEvent(input$resetButton,{
@@ -421,25 +427,35 @@ server <- function(input, output) {
   })
   
   output$keywordSelect <- renderUI({
-    checkboxGroupInput("keywordSelected", "Select keywords: ", keywordVal$word)
+    checkboxGroupInput("keywordSelected", "Select keywords: ", choices=keywordVal$word, selected=keywordVal$word)
   })
   
   observeEvent(input$plotButton,{
-    keywordSel$word <- c(keywordSel$word, input$keywordSelected)
+    keywordSel$word <- unique(c(keywordSel$word, input$keywordSelected))
   })
   
-  df= reactive({getTwitterTrend(conn,geoinfo = NULL,keywords = keywordSel$word) })
+  # df= reactive({getTwitterTrend(conn,geoinfo = NULL,keywords = keywordSel$word)})
   
-  output$fig1=renderPlotly(fig1())
+  df=reactive({
+    getTwitterTrend(conn,geoinfo = NULL,keywords=keywordSel$word)%>%
+      mutate(date=ymd(date))%>%
+      left_join(spread_data,'date')
+  })
+    
   
-  output$fig2=renderPlotly(fig2())
+  # output$fig1=renderPlotly(fig1())
+  # 
+  # output$fig2=renderPlotly(fig2())
   
   
   # using plotly package to make a plot that both have death, sentiment and frequency
   
-  data = reactive({
-    cbind('date'=spread_data$date, 'positiveIncrease number'=spread_data$positiveIncrease, 'frequency'=df()$number,  'sentiment'=df()$sentiment_score)
-  }) 
+  # data = reactive({
+  #   cbind('date'=spread_data$date, 
+  #         'positiveIncrease number'=spread_data$positiveIncrease, 
+  #         'frequency'=df()$number,  
+  #         'sentiment'=df()$sentiment_score)
+  # })
   
   ay =reactive({list(
     tickfont = list(color = "red"),
@@ -448,20 +464,115 @@ server <- function(input, output) {
     title = "frequency"
   )}) 
   
-  fig1=reactive({
-    fig1= plot_ly(data=data.frame(data()), x = ~date, y = ~positiveIncrease, name = 'positiveIncrease', type = 'scatter', mode = 'lines') %>%
-      add_trace(data=data.frame(data()),y = ~frequency, x=~date, name = 'text',  mode = 'lines+markers',yaxis = "y2") %>%
-      layout(title = "Increase and the frequency of the text", yaxis2 = ay(),xaxis = list(title="x")) %>%
-      add_trace(data=data.frame(data()), y = ~sentiment, name = 'sentiment', mode = 'markers')
-    fig1
+  # output$figTrend <- renderPlotly({
+  #   fig1= plot_ly(data=data.frame(data()), 
+  #                 x = ~date, y = ~positiveIncrease, 
+  #                 name = 'positiveIncrease',
+  #                 type = 'scatter', 
+  #                 mode = 'lines') %>%
+  #     add_trace(data=data.frame(data()),
+  #               y = ~frequency, x=~date, 
+  #               name = paste("",keywordSel$word, collapse="+", sep=""), 
+  #               mode = 'lines+markers',
+  #               yaxis = "y2") %>%
+  #     layout(title = "Increase and the frequency of the text", 
+  #            yaxis2 = ay(),xaxis = list(title="x")) %>%
+  #     add_trace(data=data.frame(data()), 
+  #               y = ~sentiment*(ifelse(abs(max(positiveIncrease))>abs(min(positiveIncrease)), 0.5*abs(max(positiveIncrease)), 0.5*abs(min(positiveIncrease)))), 
+  #               name = 'sentiment', 
+  #               mode = 'markers')
+  #   fig1
+  # })
+  
+  output$figTrend <- renderPlotly({
+    fig=plot_ly(x=df()$date,y=df()$positiveIncrease,color=I('black'),
+                name='Positive Increase',type ='scatter',mode='lines+markers') 
+    n=nrow(df())
+    color=df()$sentiment_score%>%
+      {(.[1:(n-1)]+.[2:n])/2}%>%
+      {ifelse(.>0,'green','red')}
+    
+    fig=fig%>%
+      add_trace(x=top_n(df(),2)$date,y=top_n(df(),2)$number,color=I('blue'),
+                name=ifelse(length(keywordSel$word)<3,
+                            paste("",keywordSel$word, collapse="+", sep=""),
+                            paste("",keywordSel$word[1],"+",keywordSel$word[2],"...",sep="")),
+                mode='lines+markers',yaxis="y2",visible='legendonly')
+    for(i in 1:(n-1))
+      fig=fig%>%
+      add_trace(x=slice(df(), i:(i+1))$date,y=slice(df(), i:(i+1))$number,color=I(color[i]),
+                showlegend=F,mode='lines+markers',yaxis="y2")
+    fig=fig%>%layout(title="Twitter Sentiment Trends",yaxis2=ay(),xaxis=list(title="x"))
+    fig
   })
-  fig2 =reactive({
-    fig2 =  plot_geo(Geoplot, locationmode = 'USA-states') %>% 
-      add_trace(Geoplot, locations = ~state,type='choropleth',z= ~mean_sentiment,text = ~hover,colors="Reds")%>% 
-      layout(title = "sentiment score of each state")
+  # fig1=reactive({
+  #   fig1= plot_ly(data=data.frame(data()), 
+  #                 x = ~date, y = ~positiveIncrease, 
+  #                 name = 'positiveIncrease',
+  #                 type = 'scatter', 
+  #                 mode = 'lines') %>%
+  #     add_trace(data=data.frame(data()),
+  #               y = ~frequency, x=~date, 
+  #               name = paste("",keywordSel$word, collapse="+", sep=""), 
+  #               mode = 'lines+markers',
+  #               yaxis = "y2") %>%
+  #     layout(title = "Increase and the frequency of the text", 
+  #            yaxis2 = ay(),xaxis = list(title="x")) %>%
+  #     add_trace(data=data.frame(data()), 
+  #               y = ~sentiment*(ifelse(abs(max(positiveIncrease))>abs(min(positiveIncrease)), 0.5*abs(max(positiveIncrease)), 0.5*abs(min(positiveIncrease)))), 
+  #               name = 'sentiment', 
+  #               mode = 'markers')
+  #   fig1
+  # })
+  output$figGeo <- renderPlotly({
+    fig2=plot_geo(locationmode='USA-states')
+    n=Geoplot$month%>%unique()%>%length()
+    visible=c(T,rep(F,n-1))
+    steps=list()
+    for (i in 1:n) {
+      fig2=Geoplot[Geoplot$month==i,]%>%
+        {add_trace(fig2,locations=.$state,z=.$sentiment_score,text=.$hover,
+                   hoverinfo='text',visible=visible[i],
+                   type='choropleth',colors="RdBu")}
+      steps[[i]]=list(args=list('visible',c(rep(F,i-1),T,rep(F,n-i))),
+                      label=month(i,T),method='restyle')
+    }  
+    # add slider control to plot
+    fig2=fig2%>%layout(title="Sentiment Score of States",
+                       geo=list(scope='usa',projection=list(type='albers usa'),
+                                showlakes=T,lakecolor=toRGB('white')),
+                       sliders=list(list(active=1,currentvalue=list(prefix="Month: "),
+                                         steps=steps)))%>%hide_colorbar()
     fig2
-  }) 
-
+  })
+  # fig2 =reactive({
+  #   fig2=plot_geo(locationmode='USA-states')
+  #   n=Geoplot$month%>%unique()%>%length()
+  #   visible=c(T,rep(F,n-1))
+  #   steps=list()
+  #   for (i in 1:n) {
+  #     fig2=Geoplot[Geoplot$month==i,]%>%
+  #       {add_trace(fig2,locations=.$state,z=.$sentiment_score,text=.$hover,
+  #                  hoverinfo='text',visible=visible[i],
+  #                  type='choropleth',colors="RdBu")}
+  #     steps[[i]]=list(args=list('visible',c(rep(F,i-1),T,rep(F,n-i))),
+  #                     label=month(i,T),method='restyle')
+  #   }  
+  #   # add slider control to plot
+  #   fig2=fig2%>%layout(title="Sentiment Score of States",
+  #                geo=list(scope='usa',projection=list(type='albers usa'),
+  #                         showlakes=T,lakecolor=toRGB('white')),
+  #                sliders=list(list(active=1,currentvalue=list(prefix="Month: "),
+  #                                  steps=steps)))%>%hide_colorbar()
+  #   fig2
+  # }) 
+  # output$event <- renderPrint({
+  #   e <- event_data("plotly_relayout", source=)
+  #   if(is.null(e))
+  #     return("Nothing")
+  #   else
+  #     return(str(e))
+  # })
 }
 
 # Run the application 
