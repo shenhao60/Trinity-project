@@ -1,0 +1,115 @@
+---
+title: "Demo of Plotting"
+author: "Hao Shen"
+date: "2020/12/14"
+output: html_document
+---
+
+# ************Initial setting**************
+```{r}
+# load packages
+library(shiny)
+library(tidyverse)
+library(lubridate)
+library(DBI)
+library(RSQLite)
+library(plotly)
+# load dependency
+#setwd('COVID-Trends-on-Twitter/')
+source('function-db.R',encoding = 'UTF-8')
+source('function-pt.R',encoding = 'UTF-8')
+dbpathT='Covid-tweets-en.db'
+dbpathR='Covid-reddit-en.db'
+connT=dbConnect(SQLite(),dbpathT)
+connR=dbConnect(SQLite(),dbpathR)
+```
+
+# ************Normal Tweets trends**************
+```{r}
+# spread data
+covid=read.csv('us_covid19_daily.csv')%>%select(date,positiveIncrease)
+# a list of groups of keywords
+keywords1='Mask#N95#口罩'
+keywords2='lockdown#stay home'
+keywords1=keywords1%>%str_split('#')%>%.[[1]]
+keywords2=keywords2%>%str_split('#')%>%.[[1]]
+keyword=list(keywords1,keywords2)
+# a list of groups of data
+trend1=keyword[[1]]%>%{getTwitterTrend(connT,geoinfo=NULL,keywords=.,period=NULL)}
+trend2=keyword[[2]]%>%{getTwitterTrend(connT,geoinfo=NULL,keywords=.,period=NULL)}
+trend=list(trend1,trend2)
+# examples
+trendPlot(covid,keyword[[1]],trend[[1]])
+trendPlot(covid,keyword[[2]],trend[[2]])
+trendsPlot(covid,keyword,trend)
+```
+
+# **************Geo Tweets trends****************
+```{r}
+# spread data
+covid=read.csv('us_states_covid19_daily.csv')%>%
+    select(date,positiveIncrease,state)%>%
+    mutate(month=month(ymd(date)))%>%
+    {aggregate(positiveIncrease~month,.,sum)}
+# a group of keywords
+keyword='Mask#N95#口罩'
+keyword=keyword%>%str_split('#')%>%.[[1]]
+# a group of data
+trend=keyword%>%
+    {getTwitterTrend(connT,geoinfo='country',trend='month',keywords=.,period=NULL)}%>%
+    filter(country=='United States')%>%
+    mutate(month=as.integer(month))%>%
+    select(-country)
+# example
+geoTrendPlot(covid,keyword,trend)
+```
+
+# ***************Geo Tweets map*****************
+```{r}
+# spread data
+covid=read.csv('us_states_covid19_daily.csv')%>%
+    select(date,positiveIncrease,state)%>%
+    mutate(month=month(ymd(date)))%>%
+    {aggregate(positiveIncrease~state+month,.,sum)}
+# a group of keywords
+keyword='Mask#N95#口罩'
+keyword=keyword%>%str_split('#')%>%.[[1]]
+# a group of data
+trend=keyword%>%
+    {getTwitterTrend(connT,geoinfo='state',trend='month',keywords=.,period=NULL)}%>%
+    filter(country=='United States')%>%
+    mutate(month=as.integer(month))
+# example
+geoTrendMap(covid,trend)
+```
+
+# ************Normal Reddit trends**************
+```{r}
+# spread data
+covid=read.csv('us_covid19_daily.csv')%>%select(date,positiveIncrease)
+# a list of groups of keywords
+keywords1='Mask#N95#口罩'
+keywords2='lockdown#stay home'
+keywords1=keywords1%>%str_split('#')%>%.[[1]]
+keywords2=keywords2%>%str_split('#')%>%.[[1]]
+keyword=list(keywords1,keywords2)
+# a list of groups of data
+trend1=keyword[[1]]%>%{getRedditTrend(connR,keywords=.,period=NULL)}
+trend2=keyword[[2]]%>%{getRedditTrend(connR,keywords=.,period=NULL)}
+trend=list(trend1,trend2)
+# examples
+trendPlot(covid,keyword[[1]],trend[[1]])
+trendPlot(covid,keyword[[2]],trend[[2]])
+trendsPlot(covid,keyword,trend)
+```
+
+# ************Finial cleaning**************
+```{r}
+dbDisconnect(connT)
+dbDisconnect(connR)
+rm(connR,connT,covid,keyword,trend,trend1,trend2)
+rm(dbpathR,dbpathT,keywords1,keywords2)
+rm(geoTrendMap,geoTrendPlot,trendPlot,trendsPlot)
+rm(getRedditData,getRedditTrend,getTwitterData,getTwitterTrend)
+gc()
+```
