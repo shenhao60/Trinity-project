@@ -40,7 +40,7 @@ body <- dashboardBody(
                          textInput("keywordTweet", label=h4("Enter keywords"), value=""),
                          actionButton("addButtonTweet", "Add"),
                          p(class = "text-muted",
-                           paste("Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in mask#covid for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords. Please wait for a few seconds to plot and do not click the add button repeatedly. ")
+                           paste('Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in "mask#covid" for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords at the same time. The app could take a few seconds to respond. Please do not click the add button repeatedly. ')
                          )
                      ),
                      box(width=NULL,
@@ -60,7 +60,7 @@ body <- dashboardBody(
                          textInput("keywordTweetGeo", label=h4("Enter keywords"), value=""),
                          actionButton("addButtonTweetGeo", "Add"),
                          p(class = "text-muted",
-                           paste("Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in mask#covid for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords at the same time. The plot could take a few seconds to run. Please do not click the add button repeatedly. ")
+                           paste('Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in "mask#covid" for analyzing tweets containing mask and covid in their text. The app could take a few seconds to respond. Please do not click the add button repeatedly. ')
                          )
                      )
               ),
@@ -79,7 +79,7 @@ body <- dashboardBody(
                          textInput("keywordReddit", label=h4("Enter keywords"), value=""),
                          actionButton("addButtonReddit", "Add"),
                          p(class = "text-muted",
-                           paste("Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in mask#covid for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords at the same time. The plot could take a few seconds to run. Please do not click the add button repeatedly. ")
+                           paste('Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in "mask#covid" for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords at the same time. The app could take a few seconds to respond. Please do not click the add button repeatedly. ')
                          )
                      ),
                      box(width=NULL,
