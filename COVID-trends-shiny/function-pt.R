@@ -1,3 +1,14 @@
+# function to obtain legend_name according to keywords
+legendName=function(keywords){
+    if(length(keywords)==1) {
+        legend_name=keywords[1]
+    } else if (length(keywords)==2) {
+        legend_name=paste(keywords[1],', ',keywords[2],sep='')
+    } else {
+        legend_name=paste(keywords[1],', ',keywords[2],', ...',sep='')
+    }
+    return(legend_name)
+}
 # one group of keywords plot function
 trendPlot=function(covid,keywords,trend){
     # select covid trend data
@@ -111,9 +122,9 @@ trendsPlot=function(covid,keywords,trends){
     color=trends[[1]]$sentiment_score%>%
         {(.[1:(n-1)]+.[2:n])/2}%>%
         {ifelse(.>0,'green','red')}
-    hover=paste('Date: ',trend[[1]]$date,' <br>Sentiment Score: ',round(trend[[1]]$sentiment_score,3))
+    hover=paste('Date: ',trends[[1]]$date,' <br>Sentiment Score: ',round(trends[[1]]$sentiment_score,3))
     for(i in 1:(n-1)){
-        pic=pic%>%add_trace(x=trend[[1]]$date[i:(i+1)],y=trend[[1]]$number[i:(i+1)],color=I(color[i]),
+        pic=pic%>%add_trace(x=trends[[1]]$date[i:(i+1)],y=trends[[1]]$number[i:(i+1)],color=I(color[i]),
                             text=hover[i],hoverinfo='text',marker=list(symbol=2,size=10),
                             mode='lines+markers',yaxis="y2",showlegend=F)
     }
@@ -122,9 +133,9 @@ trendsPlot=function(covid,keywords,trends){
     color=trends[[2]]$sentiment_score%>%
         {(.[1:(n-1)]+.[2:n])/2}%>%
         {ifelse(.>0,'green','red')}
-    hover=paste('Date: ',trend[[2]]$date,' <br>Sentiment Score: ',round(trend[[2]]$sentiment_score,3))
+    hover=paste('Date: ',trends[[2]]$date,' <br>Sentiment Score: ',round(trends[[2]]$sentiment_score,3))
     for(i in 1:(n-1)){
-        pic=pic%>%add_trace(x=trend[[2]]$date[i:(i+1)],y=trend[[2]]$number[i:(i+1)],color=I(color[i]),
+        pic=pic%>%add_trace(x=trends[[2]]$date[i:(i+1)],y=trends[[2]]$number[i:(i+1)],color=I(color[i]),
                             text=hover[i],hoverinfo='text',marker=list(symbol=8,size=10),
                             mode='lines+markers',yaxis="y2",showlegend=F)
     }
