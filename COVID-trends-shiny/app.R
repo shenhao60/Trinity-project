@@ -27,9 +27,9 @@ covidGeoM=read.csv('us_states_covid19_daily.csv')%>%
   {aggregate(positiveIncrease~state+month,.,sum)}
 
 # define layout
-header <- dashboardHeader(title="Sentiment Trends of Keywords on COVID-19")
+header <- dashboardHeader(title="Trends of Keywords")
 sidebar <- dashboardSidebar(sidebarMenu(menuItem("Trends of Tweets", tabName="tweetsTrend"),
-                                        menuItem("Tweets with geo info", tabName="reddit")))
+                                        menuItem("Tweets with geo info", tabName="tweetsGeo")))
 body <- dashboardBody(
   tabItems(
     tabItem("tweetsTrend",
@@ -50,27 +50,21 @@ body <- dashboardBody(
               )
             )
     ),
-    tabItem("reddit",
+    tabItem("tweetsGeo",
             fluidRow(
               column(3,
                      box(width=NULL,
                          textInput("keywordTweetGeo", label=h4("Enter keywords"), value=""),
                          actionButton("addButtonTweetGeo", "Add")
                          #actionButton("resetButtonReddit", "reset")
-                     ),
-                     box(width=NULL,
-                         uiOutput("keywordSelectTweetGeo")
-                         # actionButton("plotButtonReddit", "plot"),
                      )
               ),
-              column(9,plotlyOutput("figTweetGeo")
+              column(9,
+                     plotlyOutput("figTweetGeo"),
+                     br(),
+                     plotlyOutput("figTrendTweetGeo")
               )
               #"figTrendTweetGeo"
-            ),
-            fluidRow(
-              column(3),
-              column(9,plotlyOutput("figTrendTweetGeo")
-              )
             )
             
     )
@@ -172,6 +166,8 @@ server <- function(input, output) {
     geoTrendMap(covidGeoM,dataTPG()[[2]])
   })
 }
+
+
 
 # Run the application 
 shinyApp(ui = ui, server = server)
