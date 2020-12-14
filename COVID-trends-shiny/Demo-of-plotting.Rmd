@@ -53,6 +53,7 @@ covid=read.csv('us_states_covid19_daily.csv')%>%
     {aggregate(positiveIncrease~month,.,sum)}
 # a group of keywords
 keyword='Mask#N95#口罩'
+
 keyword=keyword%>%str_split('#')%>%.[[1]]
 # a group of data
 trend=keyword%>%
@@ -61,7 +62,8 @@ trend=keyword%>%
     mutate(month=as.integer(month))%>%
     select(-country)
 # example
-geoTrendPlot(covid,keyword,trend)
+geoTrendPlot(covid,'mask',trend)
+
 ```
 
 # ***************Geo Tweets map*****************
