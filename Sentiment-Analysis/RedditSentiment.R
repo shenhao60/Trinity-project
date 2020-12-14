@@ -1,17 +1,10 @@
-library(RedditExtractoR)
-covid=get_reddit(search_terms="covid",page_threshold=5,wait_time=10)
-coronavirus=get_reddit(search_terms="coronavirus",page_threshold=5,wait_time=10)
-ncov19=get_reddit(search_terms="ncov19",page_threshold=5,wait_time=10)
-ncov2019=get_reddit(search_terms="ncov2019",page_threshold=5,wait_time=10)
-
-
 library(tidyverse)
 library(tidytext)
 library(lubridate)
 library(RSQLite)
 library(DBI)
 
-dbpathR="Covid-reddit-en.db"
+dbpathR="../COVID-Trends-on-Twitter/Covid-reddit-en.db"
 connR=dbConnect(SQLite(),dbpathR)
 
 DF=dbGetQuery(connR,'select * from coronavirusReddit')

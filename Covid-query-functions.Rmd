@@ -67,7 +67,6 @@ for(i in 1:ceiling(nrow(Geo_tweet)/90000)) {
   geo=lookup_statuses(Geo_tweet$Tweet_ID[(900*i):nrow(Geo_tweet)])
   if(i==1){Geo=geo}else{Geo=rbind(Geo,geo)}
 }
-
 lat_lng(Geo)%>%
   select(status_id,user_id,screen_name,created_at,text,is_quote,
          is_retweet,favourites_count,retweet_count,followers_count,
@@ -90,7 +89,7 @@ dbDisconnect(conn)
 }
 ```
 
-## Get data function
+## Get tweets data function
 ```{r}
 getTwitterData=function(conn,geoinfo=T,keywords=NULL,
                         period=c('2020-03-29 00:00:00','2020-04-01 23:59:59')){
@@ -167,11 +166,11 @@ getTwitterData=function(conn,geoinfo=T,keywords=NULL,
   }
   # Obtain Data
  dbGetQuery(conn,query)
+
 }
 ```
 
-
-## Get trend function
+## Get tweets trend function
 ```{r}
 getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
                        period=c('2020-03-29 00:00:00','2020-04-01 23:59:59')){
@@ -316,7 +315,6 @@ getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
 }
 ```
 
-
 ## Examples
 ```{r}
 # connect to data base
@@ -337,8 +335,8 @@ rm(tweetsGeo,tweetsMonthlyGeo,tweets,tweetsDaily)
 gc()
 ```
 
+# Get reddit data function
 ```{r}
-# get reddit Data function
 getRedditData=function(conn,keywords=NULL,
                         period=c('2020-03-29','2020-04-30')){
   dbquery=paste("SELECT CoronavirusReddit.*,sentiment_score ",
@@ -394,13 +392,10 @@ getRedditData=function(conn,keywords=NULL,
   # Obtain Data
   dbGetQuery(conn,query)
 }
-
-
 ```
 
+# Get reddit trend function
 ```{r}
-## Get trend function
-
 getRedditTrend=function(conn,keywords=NULL,
                          period=c('2020-03-29','2020-04-30')){
   dbquery=paste("SELECT strftime('%Y-%m-%d',created_at) AS date,",
@@ -481,7 +476,6 @@ redditDaily=getRedditTrend(connr,keywords = c('mask','N95','口罩'))
 redditAll=getRedditData(connr,keywords = c('mask','N95','口罩'),period = NULL)
 # get reddit daily trends giving keywords
 redditDailyAll=getRedditTrend(connr,keywords = c('mask','N95','口罩'),period = NULL)
-
 # disconnect data base
 dbDisconnect(connr)
 # Release memory
