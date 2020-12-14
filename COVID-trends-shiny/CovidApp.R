@@ -38,8 +38,10 @@ body <- dashboardBody(
               column(3,
                      box(width=NULL,
                          textInput("keywordTweet", label=h4("Enter keywords"), value=""),
-                         actionButton("addButtonTweet", "Add")
-                         #actionButton("resetButtonTweet", "reset")
+                         actionButton("addButtonTweet", "Add"),
+                         p(class = "text-muted",
+                           paste("Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in mask#covid for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords. Please wait for a few seconds to plot and do not click the add button repeatedly. ")
+                         )
                      ),
                      box(width=NULL,
                          uiOutput("keywordSelectTweet")
@@ -56,8 +58,10 @@ body <- dashboardBody(
               column(3,
                      box(width=NULL,
                          textInput("keywordTweetGeo", label=h4("Enter keywords"), value=""),
-                         actionButton("addButtonTweetGeo", "Add")
-                         #actionButton("resetButtonReddit", "reset")
+                         actionButton("addButtonTweetGeo", "Add"),
+                         p(class = "text-muted",
+                           paste("Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in mask#covid for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords at the same time. The plot could take a few seconds to run. Please do not click the add button repeatedly. ")
+                         )
                      )
               ),
               column(9,
@@ -65,7 +69,6 @@ body <- dashboardBody(
                      br(),
                      plotlyOutput("figTrendTweetGeo")
               )
-              #"figTrendTweetGeo"
             )
             
     ),
@@ -74,7 +77,10 @@ body <- dashboardBody(
               column(3,
                      box(width=NULL,
                          textInput("keywordReddit", label=h4("Enter keywords"), value=""),
-                         actionButton("addButtonReddit", "Add")
+                         actionButton("addButtonReddit", "Add"),
+                         p(class = "text-muted",
+                           paste("Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in mask#covid for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords at the same time. The plot could take a few seconds to run. Please do not click the add button repeatedly. ")
+                         )
                      ),
                      box(width=NULL,
                          uiOutput("keywordSelectReddit")
@@ -175,11 +181,11 @@ server <- function(input, output) {
 
   # plot output
   output$figTrendTweetGeo=renderPlotly({
-    validate(need(input$addButtonTweetGeo!=0,"Please add a group of keywords."))
+    validate(need(input$addButtonTweetGeo!=0,""))
     geoTrendPlot(covidGeo,dataTPG()[[1]],dataTPG()[[3]])
   })
   output$figTweetGeo=renderPlotly({
-    validate(need(input$addButtonTweetGeo!=0,"Please add a group of keywords."))
+    validate(need(input$addButtonTweetGeo!=0,"Please add a group of keywords. "))
     geoTrendMap(covidGeoM,dataTPG()[[2]])
   })
 

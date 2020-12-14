@@ -58,7 +58,7 @@ trendPlot=function(covid,keywords,trend){
                             mode='lines+markers',yaxis="y2",showlegend=F)
     }
     # set entire layout
-    pic%>%layout(title="Trends between the COVID-19 and Twitter sentiment",
+    pic%>%layout(title="Trends between the COVID-19 and sentiment",
                  yaxis=list(title="Number of infections on each day"),
                  yaxis2=list(tickfont=list(color="blue"),overlaying="y",
                              side="right",title="The frequency of keywords"),
@@ -232,7 +232,7 @@ geoTrendPlot=function(covid,keywords,trend){
                             mode='lines+markers',yaxis="y2",showlegend=F)
     }
     # set entire layout
-    pic%>%layout(title="Trends between the COVID-19 and Twitter sentiment",
+    pic%>%layout(title="Trends between the COVID-19 and sentiment",
                  yaxis=list(title="Number of infections in each month"),
                  yaxis2=list(tickfont=list(color="blue"),overlaying="y",
                              side="right",title="The frequency of keywords"),
