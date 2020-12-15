@@ -1,0 +1,769 @@
+---
+title: "MA615 Final Project"
+author: "Danping Liu, Hao Shen, Haoqi Wang, Yuxi Wang"
+date: "2020/12/14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(tidyverse,DBI,RSQLite,lubridate,rtweet,plotly)
+```
+
+## Initial setting
+* The database can be downloand from [cowtransfer](https://mssp2020.cowtransfer.com/s/8c75ea77b46944)
+```{r message=FALSE, warning=FALSE }
+# load dependency
+dbpathT='Covid-tweets-en.db'
+dbpathR='Covid-reddit-en.db'
+connT=dbConnect(SQLite(),dbpathT)
+connR=dbConnect(SQLite(),dbpathR)
+```
+
+# 1.Introduction
+
+As the pandemic continues, we want to find out how do people’s thoughts change. What do they care about? Do they have good feelings or bad feelings? What we have done is to build an tool to compare the relationship among keywords trending on twitter, people’s sentiment scores and COVID-19 spreading.
+
+Our tool will serve as an exploratory tool, so it will allow users to explore the data by themselves, giving them a general idea of people’s considering trends, and helping them to solve their problems, like making the business decision or looking for a research topic. 
+
+Firstly, we have got the covid related tweet IDs and detailed tweet information. Due to big dataset, we stored them in a database by SQLite. Secondly, we did simple text mining, in this part, we have done the sentiment score calculation, keyword frequency statistics and reverse geocoding. By using the data and text mining, we draw the interactive plotting and mapping. And we have deploied a shiny app to show this.
+
+Moreover, we get the tweets data to compare with the COVID-spreading through Reddit, which is the social news aggregation, web content rating and discussion website. There is no interference of official account, and we can get dataset easily, which is also the Us-based dataset.
+
+# 2.API Tools
+
+## 2.1 Twitter API
+Since we only have a standard Twitter developer account which has a limitation of downloading data in the last seven days. So, we chose to download the list of tweet IDs related to COVID-19 from Kaggle, which has a huge ID number and is a json format and then used Twitter APIs to look up the details about these tweets. After data collection and cleaning through SQLite and R, we get the first database which has all the tweets data.
+
+## 2.2 Bing API
+When we draw the map with the number of the tweets, we need to get the geo location. So we reverse geocoding with Bing APIs in order to get the longitude and latitude, which is the location that the person creates the tweet. Then establish another database with geographic information.
+
+The reason why use database
+1. We can access to large Tweets data set faster. 
+2. We can get pre-processing information. 
+3. SQL for fast frequency calculation than R. 
+4. the use of SQL is more Convenient to add more data and Convenient for further analysis.
+
+
+# 3.Sentiment score calculation
+People use Twitter to share their interests and concerns. Word frequency analysis shows what topics they are interested in, and sentiment analysis focuses on how they think about it. 
+
+So we decide to measure the sentiment by a sentiment score. What we have done is we break the tweets into words firstly, then we use the sentiment lexicon dictionary to tag each of the word with its sentiment, checking whether it is positive or negative. The sentiment score for each tweet is equal to the number of positive words in this tweet minus number of negative words divided by the total number of sentiment tagged words. And the score is between -1 and 1. -1 is completely negative, 1 is completely positive, and 0 is neutral, or mixed. The sentiment score will be sent back to the database for future analysis, so each tweet has a new variable, sentiment score now in our database. 
+
+The overall sentiment score is for a bunch of tweets that contain a keyword or several keywords in a period of time. This process will proceed when we actually draw the line plots on the shiny app. So when the user choose the keywords, we use sql to get the the selected tweets and calculate their overall sentiment score, either daily or monthly. Then we use the daily or monthly overall sentiment score to draw the line plot, and see the trend of people’s sentiment for a given keyword, or keywords.
+
+
+```{r echo= FALSE }
+# Get tweets data function
+getTwitterData=function(conn,geoinfo=T,keywords=NULL,
+                        period=c('2020-03-29 00:00:00','2020-04-01 23:59:59')){
+  # Select table of database according to 'geoinfo'
+  if(geoinfo){
+    geoinfo_query=paste("SELECT CoronavirusTweetsGeo.*,",
+                        "city,state,country,sentiment_score ",
+                        "FROM CoronavirusTweetsGeo ",
+                        "LEFT JOIN TweetsGeoSentiment ON ",
+                        "CoronavirusTweetsGeo.status_id=",
+                        "TweetsGeoSentiment.status_id ",
+                        "LEFT JOIN GeoDetail ON ",
+                        "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
+                        "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",sep="")
+  }
+  else{
+    geoinfo_query=paste("SELECT CoronavirusTweets.*,sentiment_score ",
+                        "FROM CoronavirusTweets ",
+                        "LEFT JOIN TweetsSentiment ON ",
+                        "CoronavirusTweets.status_id=",
+                        "TweetsSentiment.status_id",sep="")
+  }
+  # Add keywords conditions according to 'keywords' 
+  if(is.null(keywords)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(is.null(period)){
+    period_query=''
+  }
+  else{
+    if(length(period)==2){
+          period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[1],"') ",
+                       "AND strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[2],"')) ",
+                       sep="")
+    }
+    else{
+      stop("The time period should be a vector with length 2.") 
+    }
+  }
+  
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste(geoinfo_query,sep="")
+    }
+    else{
+      query=paste(geoinfo_query," WHERE",keywords_query,sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste(geoinfo_query," WHERE",period_query,sep="")
+    }
+    else{
+      query=paste(geoinfo_query," WHERE",
+                  period_query,"AND",keywords_query,sep="")
+    }
+  }
+  # Obtain Data
+ dbGetQuery(conn,query)
+}
+```
+
+In the same way, we can get another 3 function to get data from two Databases ([Detailed Code](https://shenhao60.github.io/Trinity-project/Covid-query-functions.html)):
+
+Get tweets trend function
+```{r echo= FALSE}
+getTwitterTrend=function(conn,geoinfo='country',trend='day',keywords=NULL,
+                       period=c('2020-03-29 00:00:00','2020-04-01 23:59:59')){
+  # Add trend cconditions according to 'trend'
+  if(trend=='day'){
+    trend_query=c("'%Y-%m-%d'","date")
+  }
+  else{
+    if(trend=='week'){
+      trend_query=c("'%W'","week")
+    }
+    else{
+      if(trend=='month'){
+        trend_query=c("'%m'","month")
+      }
+      else{
+        stop("The trend can only be 'day', 'week' or 'month'.") 
+      }
+    }
+  }
+    # Select table of database according to 'geoinfo'
+  if(is.null(geoinfo)){
+    geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                        ",created_at) AS ",trend_query[2],", ",
+                        "count(*) AS number, ",
+                        "avg(sentiment_score) AS sentiment_score ",
+                        "FROM CoronavirusTweets ",
+                        "LEFT JOIN TweetsSentiment ON ",
+                        "CoronavirusTweets.status_id=",
+                        "TweetsSentiment.status_id",sep="")
+    group_query=paste(" GROUP BY strftime(",trend_query[1],
+                      ",created_at)",sep="")
+  }
+  else{
+    if(geoinfo=='country'){
+    geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                        ",created_at) AS ",trend_query[2],", ",
+                        "count(*) AS number, country, ",
+                        "avg(sentiment_score) AS sentiment_score ",
+                        "FROM CoronavirusTweetsGeo ",
+                        "LEFT JOIN TweetsGeoSentiment ON ",
+                        "CoronavirusTweetsGeo.status_id=",
+                        "TweetsGeoSentiment.status_id ",
+                        "LEFT JOIN GeoDetail ON ",
+                        "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
+                        "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",sep="")
+    group_query=paste(" GROUP BY strftime(",trend_query[1],
+                      ",created_at),country",sep="")
+    }
+    else{
+      if(geoinfo=='state'){
+        geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                            ",created_at) AS ",trend_query[2],", ",
+                            "count(*) AS number, country, state, ",
+                            "avg(sentiment_score) AS sentiment_score ",
+                            "FROM CoronavirusTweetsGeo ",
+                            "LEFT JOIN TweetsGeoSentiment ON ",
+                            "CoronavirusTweetsGeo.status_id=",
+                            "TweetsGeoSentiment.status_id ",
+                            "LEFT JOIN GeoDetail ON ",
+                            "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
+                            "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",sep="")
+        group_query=paste(" GROUP BY strftime(",trend_query[1],
+                          ",created_at),country,state",sep="")
+      }
+      else{
+        if(geoinfo=='city'){
+          geoinfo_query=paste("SELECT strftime(",trend_query[1],
+                              ",created_at) AS ",trend_query[2],", ",
+                              "count(*) AS number, country, state, city, ",
+                              "avg(sentiment_score) AS sentiment_score ",
+                              "FROM CoronavirusTweetsGeo ",
+                              "LEFT JOIN TweetsGeoSentiment ON ",
+                              "CoronavirusTweetsGeo.status_id=",
+                              "TweetsGeoSentiment.status_id ",
+                              "LEFT JOIN GeoDetail ON ",
+                              "CoronavirusTweetsGeo.lat=GeoDetail.lat ",
+                              "AND CoronavirusTweetsGeo.lng=GeoDetail.lng",
+                              sep="")
+           group_query=paste(" GROUP BY strftime(",trend_query[1],
+                             ",created_at),country,state,city",sep="")
+        }
+        else{
+          stop("The geoinfo can only be 'NULL', 'city', 'state' or 'country'.")
+        }
+      }
+    }
+  }
+  
+  # Add keywords conditions according to 'keywords' 
+  if(is.null(keywords)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(is.null(period)){
+    period_query=''
+  }
+  else{
+    if(length(period)==2){
+          period_query=paste(" (strftime('%Y-%m-%d %H:%M:%S',created_at)>=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[1],"') ",
+                       "AND strftime('%Y-%m-%d %H:%M:%S',created_at)<=",
+                       "strftime('%Y-%m-%d %H:%M:%S','",period[2],"')) ",
+                       sep="")
+    }
+    else{
+      stop("The time period should be a vector with length 2.") 
+    }
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste(geoinfo_query,group_query,sep="")
+    }
+    else{
+      query=paste(geoinfo_query," WHERE",keywords_query,group_query,sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste(geoinfo_query," WHERE",period_query,group_query,sep="")
+    }
+    else{
+      query=paste(geoinfo_query," WHERE",period_query,"AND",keywords_query,
+                  group_query,sep="")
+    }
+  }
+  # Obtain Data
+ dbGetQuery(conn,query)
+}
+```
+
+
+
+Get reddit data function
+```{r echo= FALSE}
+getRedditData=function(conn,keywords=NULL,
+                        period=c('2020-03-29','2020-04-30')){
+  dbquery=paste("SELECT CoronavirusReddit.*,sentiment_score ",
+                "FROM CoronavirusReddit ",
+                "LEFT JOIN RedditSentiment ON ",
+                "CoronavirusReddit.status_id=",
+                "RedditSentiment.status_id ",sep="")
+  # Add keywords conditions according to 'keywords' 
+  if(is.null(keywords)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(length(period)!=2){
+    period_query=''
+  }
+  else{
+    period_query=paste(" (strftime('%Y-%m-%d',created_at)>=",
+                       "strftime('%Y-%m-%d','",period[1],"') ",
+                       "AND strftime('%Y-%m-%d',created_at)<=",
+                       "strftime('%Y-%m-%d','",period[2],"')) ",
+                       sep="")
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste(dbquery,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",keywords_query,sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste(dbquery," WHERE",period_query,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",period_query,"AND",keywords_query,sep="")
+    }
+  }
+  # Obtain Data
+  dbGetQuery(conn,query)
+}
+```
+
+Get reddit trend function
+```{r echo= FALSE}
+getRedditTrend=function(conn,keywords=NULL,
+                         period=c('2020-03-29','2020-04-30')){
+  dbquery=paste("SELECT strftime('%Y-%m-%d',created_at) AS date,",
+                "count(*) AS number, ",
+                "avg(sentiment_score) AS sentiment_score ",
+                "FROM CoronavirusReddit ",
+                "LEFT JOIN RedditSentiment ON ",
+                "CoronavirusReddit.status_id=",
+                "RedditSentiment.status_id ",sep="")
+  group_query="GROUP BY strftime('%Y-%m-%d',created_at)"
+  
+  # Add keywords conditions according to 'keywords' 
+  if(is.null(keywords)){
+    keywords_query=''
+  }
+  else{
+    for(i in 1:length(keywords)){
+      if(i==1){
+        keywords_query=paste(" ((text LIKE '%",keywords[i],"%')",sep="")
+      }
+      else{
+        keywords_query=keywords_query%>%
+          paste("OR (text LIKE '%",keywords[i],"%')",sep="")
+      }
+    }
+    keywords_query=paste(keywords_query,") ",sep="")
+  }
+  # Add period conditions according to 'period'
+  if(is.null(period)){
+    period_query=''
+  }
+  else{
+    if(length(period)==2){
+      period_query=paste(" (strftime('%Y-%m-%d',created_at)>=",
+                         "strftime('%Y-%m-%d','",period[1],"') ",
+                         "AND strftime('%Y-%m-%d',created_at)<=",
+                         "strftime('%Y-%m-%d','",period[2],"')) ",
+                         sep="")
+    }
+    else{
+      stop("The time period should be a vector with length 2.") 
+    }
+  }
+  # Write SQL
+  if(period_query==''){
+    if(keywords_query==''){
+      query=paste(dbquery,group_query,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",keywords_query,group_query,sep="")
+    }
+  }
+  else{
+    if(keywords_query==''){
+      query=paste(dbquery," WHERE",period_query,group_query,sep="")
+    }
+    else{
+      query=paste(dbquery," WHERE",period_query,"AND",keywords_query,
+                  group_query,sep="")
+    }
+  }
+  # Obtain Data
+  dbGetQuery(conn,query)
+  
+}
+```
+
+# 4.Trendplot function
+This function is used to define all our drawing functions.
+```{r echo= FALSE}
+# one group of keywords plot function
+trendPlot=function(covid,keywords,trend){
+  # select covid trend data
+  trend=trend%>%mutate(date=ymd(date))
+  date=trend$date%>%{ymd('1970-01-01')+max(.):min(.)}
+  covid=covid%>%mutate(date=ymd(date))
+  covid=data.frame(date)%>%
+    left_join(covid,'date')
+  trend=data.frame(date)%>%
+    left_join(trend,'date')
+  trend$number[is.na(trend$number)]=0
+  trend$sentiment_score[is.na(trend$sentiment_score)]=0
+  # plot for daily covid trend
+  hover=paste('Date: ',covid[,1],' <br>Daily Increase: ',covid[,2])
+  pic=plot_ly(x=covid[,1],y=covid[,2],color=I('black'),text=hover,
+              hoverinfo='text',name='Daily case increase',type ='scatter',
+              mode='lines+markers')
+  # plot for trend
+  ## trend legend plot
+  if(length(keywords)==1) {
+    legend_name=keywords[1]
+  } else if (length(keywords)==2) {
+    legend_name=paste(keywords[1],', ',keywords[2],sep='')
+  } else {
+    legend_name=paste(keywords[1],', ',keywords[2],', ...',sep='')
+  }
+  pic=pic%>%
+    add_trace(pic,x=trend$date,y=trend$number,color=I('blue'),
+              name=legend_name,mode='lines+markers',yaxis="y2",
+              marker=list(symbol=2,size=10),visible='legendonly')
+  ## plot for sentiment legend
+  pic=pic%>%
+    add_trace(x=trend$date[1],y=trend$number[1],color=I('green'),name="Possitive",
+              mode='markers',marker=list(size=15),yaxis="y2",visible='legendonly')
+  pic=pic%>%
+    add_trace(x=trend$date[1],y=trend$number[1],color=I('red'),name="Negative",
+              mode='markers',marker=list(size=15),yaxis="y2",visible='legendonly')
+  ## trend sentiment & frequency plot
+  n=nrow(trend)
+  color=trend$sentiment_score%>%
+    {(.[1:(n-1)]+.[2:n])/2}%>%
+    {ifelse(.>0,'green','red')}
+  hover=paste('Date: ',trend$date,' <br>Sentiment Score: ',round(trend$sentiment_score,3))
+  for(i in 1:(n-1)){
+    pic=pic%>%add_trace(x=trend$date[i:(i+1)],y=trend$number[i:(i+1)],color=I(color[i]),
+                        text=hover[i],hoverinfo='text',marker=list(symbol=2,size=10),
+                        mode='lines+markers',yaxis="y2",showlegend=F)
+  }
+  # set entire layout
+  pic%>%layout(title="Trends between the COVID-19 and Twitter sentiment",
+               yaxis=list(title="Number of infections on each day"),
+               yaxis2=list(tickfont=list(color="blue"),overlaying="y",
+                           side="right",title="The frequency of keywords"),
+               xaxis=list(title="Date"))
+}
+
+# two groups of keywords plot function
+trendsPlot=function(covid,keywords,trends){
+  # select covid trend data
+  trends[[1]]=trends[[1]]%>%mutate(date=ymd(date))
+  trends[[2]]=trends[[2]]%>%mutate(date=ymd(date))
+  date=c(trends[[1]]$date,trends[[2]]$date)%>%{ymd('1970-01-01')+max(.):min(.)}
+  covid=covid%>%mutate(date=ymd(date))
+  covid=data.frame(date)%>%
+    left_join(covid,'date')
+  trends[[1]]=data.frame(date)%>%
+    left_join(trends[[1]],'date')
+  trends[[2]]=data.frame(date)%>%
+    left_join(trends[[2]],'date')
+  trends[[1]]$number[is.na(trends[[1]]$number)]=0
+  trends[[2]]$number[is.na(trends[[2]]$number)]=0
+  trends[[1]]$sentiment_score[is.na(trends[[1]]$sentiment_score)]=0
+  trends[[2]]$sentiment_score[is.na(trends[[2]]$sentiment_score)]=0
+  # plot for daily trend
+  hover=paste('Date: ',covid[,1],' <br>Daily Increase: ',covid[,2])
+  pic=plot_ly(x=covid[,1],y=covid[,2],color=I('black'),text=hover,
+              hoverinfo='text',name='Daily case increase',type ='scatter',
+              mode='lines+markers')
+  # plot for legend
+  ## trend1 legend plot
+  if(length(keywords[[1]])==1) {
+    legend_name=keywords[[1]][1]
+  } else if (length(keywords[[1]])==2) {
+    legend_name=paste(keywords[[1]][1],', ',keywords[[1]][2],sep='')
+  } else {
+    legend_name=paste(keywords[[1]][1],', ',keywords[[1]][2],', ...',sep='')
+  }
+  pic=pic%>%add_trace(x=trends[[1]]$date,y=trends[[1]]$number,color=I('blue'),
+                      name=legend_name,mode='lines+markers',yaxis="y2",
+                      marker=list(symbol=2,size=10),visible='legendonly')
+  ## trend2 legend plot
+  if(length(keywords[[2]])==1) {
+    legend_name=keywords[[2]][1]
+  } else if (length(keywords[[2]])==2) {
+    legend_name=paste(keywords[[2]][1],', ',keywords[[2]][2],sep='')
+  } else {
+    legend_name=paste(keywords[[2]][1],', ',keywords[[2]][2],', ...',sep='')
+  }
+  pic=pic%>%add_trace(x=trends[[2]]$date,y=trends[[2]]$number,color=I('blue'),
+                      name=legend_name,mode='lines+markers',yaxis="y2",
+                      marker=list(symbol=8,size=10),visible='legendonly')
+  ## plot for sentiment legend
+  pic=pic%>%
+    add_trace(x=trends[[1]]$date[1],y=trends[[1]]$number[1],color=I('green'),name="Possitive",mode='markers',
+              marker=list(size=15), yaxis="y2",visible='legendonly')
+  pic=pic%>%
+    add_trace(x=trends[[1]]$date[1],y=trends[[1]]$number[1],color=I('red'),name="Negative",mode='markers',
+              marker=list(size=15), yaxis="y2",visible='legendonly')
+  # plot for trend1
+  n=nrow(trends[[1]])
+  color=trends[[1]]$sentiment_score%>%
+    {(.[1:(n-1)]+.[2:n])/2}%>%
+    {ifelse(.>0,'green','red')}
+  hover=paste('Date: ',trend[[1]]$date,' <br>Sentiment Score: ',round(trend[[1]]$sentiment_score,3))
+  for(i in 1:(n-1)){
+    pic=pic%>%add_trace(x=trend[[1]]$date[i:(i+1)],y=trend[[1]]$number[i:(i+1)],color=I(color[i]),
+                        text=hover[i],hoverinfo='text',marker=list(symbol=2,size=10),
+                        mode='lines+markers',yaxis="y2",showlegend=F)
+  }
+  # plot for trend2
+  n=nrow(trends[[2]])
+  color=trends[[2]]$sentiment_score%>%
+    {(.[1:(n-1)]+.[2:n])/2}%>%
+    {ifelse(.>0,'green','red')}
+  hover=paste('Date: ',trend[[2]]$date,' <br>Sentiment Score: ',round(trend[[2]]$sentiment_score,3))
+  for(i in 1:(n-1)){
+    pic=pic%>%add_trace(x=trend[[2]]$date[i:(i+1)],y=trend[[2]]$number[i:(i+1)],color=I(color[i]),
+                        text=hover[i],hoverinfo='text',marker=list(symbol=8,size=10),
+                        mode='lines+markers',yaxis="y2",showlegend=F)
+  }
+  # set entire layout
+  pic%>%layout(title="Trends between the COVID-19 and Twitter sentiment",
+               yaxis=list(title="Number of infections on each day"),
+               yaxis2=list(tickfont=list(color="blue"),overlaying="y",
+                           side="right",title="The frequency of keywords"),
+               xaxis=list(title="Date"))
+}
+
+# geo map function
+geoTrendMap=function(covid,trend){
+  # merge data
+  data=left_join(trend,covid,c('state','month'))%>%
+    select(month,number,sentiment_score,state,positiveIncrease)
+  data$number[is.na(data$number)]=0
+  data$sentiment_score[is.na(data$sentiment_score)]=0
+  data=mutate(data,hover=with(data,paste(state,"<br> <br> Positive:",positiveIncrease,
+                                         "<br> Number of Tweets",number,
+                                         "<br> Sentiment Score",round(sentiment_score,3))))
+  # background map
+  pic=plot_geo(locationmode='USA-states')
+  # monthly maps
+  n=data$month%>%unique()%>%length()
+  visible=c(T,rep(F,n-1),T,T)
+  steps=list()
+  for (i in 1:n) {
+    pic=data[data$month==unique(data$month)[i],]%>%
+      {add_trace(pic,locations=.$state,z=.$sentiment_score,text=.$hover,
+                 hoverinfo='text',visible=visible[i],type='choropleth',colors="RdBu")}
+    steps[[i]]=list(args=list('visible',c(rep(F,i-1),T,rep(F,n-i),T,T)),
+                    label=month(unique(data$month)[i],T),method='restyle')
+  }
+  # add slider control & modify entire layout
+  pic%>%
+    add_trace(x=0,y=0,color=I('blue'),name="Positive",mode='markers',
+              marker=list(size=15),visible='legendonly')%>%
+    add_trace(x=0,y=0,color=I('red'),name="Negative",mode='markers',
+              marker=list(size=15),visible='legendonly')%>%
+    layout(title="Sentiment Score of States",
+           geo=list(scope='usa',projection=list(type='albers usa'),
+                    showlakes=T,lakecolor=toRGB('white')),
+           sliders=list(list(active=1,currentvalue=list(prefix="Month: "),
+                             steps=steps)))%>%
+    hide_colorbar()
+}
+
+# geo trend function
+geoTrendPlot=function(covid,keywords,trend){
+  # select covid trend data
+  covid=trend$month%>%
+    {data.frame(month=min(.):max(.))}%>%
+    left_join(covid,'month')
+  covid$month=month(covid$month)
+  # plot for daily covid trend
+  hover=paste('Month: ',covid[,1],' <br>Monthly Increase: ',covid[,2])
+  pic=plot_ly(x=covid[,1],y=covid[,2],color=I('black'),text=hover,
+              hoverinfo='text',name='Monthly case increase',type ='scatter',
+              mode='lines+markers')
+  # plot for trend
+  ## trend legend plot
+  if(length(keywords)==1){
+    legend_name=keywords[1]
+  }
+  else{
+    if(length(keywords)==2){
+      legend_name=paste(keywords[1],', ',keywords[2],sep='')
+    }
+    else {
+      legend_name=paste(keywords[1],', ',keywords[2],', ...',sep='')
+    }
+  }
+  pic=pic%>%
+    add_trace(x=trend$month,y=trend$number,color=I('blue'),
+              name=legend_name,mode='lines+markers',yaxis="y2",
+              marker=list(symbol=2,size=10),visible='legendonly')
+  ## plot for sentiment legend
+  pic=pic%>%
+    add_trace(x=trend$month[1],y=trend$number[1],color=I('green'),name="Possitive",
+              mode='markers',marker=list(size=15),yaxis="y2",visible='legendonly')
+  pic=pic%>%
+    add_trace(x=trend$month[1],y=trend$number[1],color=I('red'),name="Negative",
+              mode='markers',marker=list(size=15),yaxis="y2",visible='legendonly')
+  ## trend sentiment & frequency plot
+  n=nrow(trend)
+  color=trend$sentiment_score%>%
+    {(.[1:(n-1)]+.[2:n])/2}%>%
+    {ifelse(.>0,'green','red')}
+  hover=paste('Month: ',trend$month,' <br>Sentiment Score: ',round(trend$sentiment_score,3))
+  for(i in 1:(n-1)){
+    pic=pic%>%add_trace(x=trend$month[i:(i+1)],y=trend$number[i:(i+1)],color=I(color[i]),
+                        text=hover[i],hoverinfo='text',marker=list(symbol=2,size=10),
+                        mode='lines+markers',yaxis="y2",showlegend=F)
+  }
+  # set entire layout
+  pic%>%layout(title="Trends between the COVID-19 and Twitter sentiment",
+               yaxis=list(title="Number of infections in each month"),
+               yaxis2=list(tickfont=list(color="blue"),overlaying="y",
+                           side="right",title="The frequency of keywords"),
+               xaxis=list(title="Month"))
+  
+}
+```
+
+# 5. Visualization
+## 5.1 Normal Tweets trends
+Load Twitter data. And use this data to make plots.
+```{r }
+# spread data
+covid=read.csv('COVID-trends-shiny/us_covid19_daily.csv')%>%select(date,positiveIncrease)
+# a list of groups of keywords
+keywords1='Mask#N95#口罩'
+keywords2='lockdown#stay home'
+keywords1=keywords1%>%str_split('#')%>%.[[1]]
+keywords2=keywords2%>%str_split('#')%>%.[[1]]
+keyword=list(keywords1,keywords2)
+# a list of groups of data
+trend1=keyword[[1]]%>%{getTwitterTrend(connT,geoinfo=NULL,keywords=.,period=NULL)}
+trend2=keyword[[2]]%>%{getTwitterTrend(connT,geoinfo=NULL,keywords=.,period=NULL)}
+trend=list(trend1,trend2)
+```
+
+```{r}
+trendPlot(covid,keyword[[1]],trend[[1]])
+```
+Take the plot of input 'mask' and 'N95' as an example. We can see that the black line represents the number of people infected with the new coronavirus that day. The other line represents the word frequency of mask and N95. In addition, green means positive of this keyword's sentiment in one day, and red means negative of this keyword's sentiment in this day.
+
+
+```{r}
+trendPlot(covid,keyword[[2]],trend[[2]])
+```
+Take the plot of input 'lockdown' and 'stay home' as an example. We can see that the black line represents the number of people infected with the new coronavirus that day. The other line represents the word frequency of lockdown and stay home. In addition, green means positive of this keyword's sentiment in one day, and red means negative of this keyword's sentiment in this day.
+
+```{r}
+trendsPlot(covid,keyword,trend)
+```
+From this plot, we can see there are three lines here. The dark line means the number of infected people every day. The diamond line means the word frequency of the keyword one which is 'mask'. And the triangle line means the word frequency of the keyword one which is 'mask'. The second and third lines mixed two colors. Green means positive of this keyword’s sentiment in one day, and red means negative of this keyword’s sentiment in this day.
+
+
+## 5.2 Geo Tweets trends
+```{r}
+# spread data
+covid=read.csv('COVID-trends-shiny/us_states_covid19_daily.csv')%>%
+    select(date,positiveIncrease,state)%>%
+    mutate(month=month(ymd(date)))%>%
+    {aggregate(positiveIncrease~month,.,sum)}
+# a group of keywords
+keyword='Mask#N95#口罩'
+keyword=keyword%>%str_split('#')%>%.[[1]]
+# a group of data
+trend=keyword%>%
+    {getTwitterTrend(connT,geoinfo='country',trend='month',keywords=.,period=NULL)}%>%
+    filter(country=='United States')%>%
+    mutate(month=as.integer(month))%>%
+    select(-country)
+# example
+geoTrendPlot(covid,'mask',trend)
+```
+In this plot, we can see the monthly frequency of mask-related words and the number of virus infections. The purpose of drawing this picture is to see the trend of virus infection and the trend of word frequency changes over a long period of time. And after understanding the situation of the epidemic situation and keywords each month, it will help to understand the mapping.
+
+
+## 5.3 Geo Tweets map
+```{r}
+# spread data
+covid=read.csv('COVID-trends-shiny/us_states_covid19_daily.csv')%>%
+    select(date,positiveIncrease,state)%>%
+    mutate(month=month(ymd(date)))%>%
+    {aggregate(positiveIncrease~state+month,.,sum)}
+# a group of keywords
+keyword='Mask#N95#口罩'
+keyword=keyword%>%str_split('#')%>%.[[1]]
+# a group of data
+trend=keyword%>%
+    {getTwitterTrend(connT,geoinfo='state',trend='month',keywords=.,period=NULL)}%>%
+    filter(country=='United States')%>%
+    mutate(month=as.integer(month))
+# example
+geoTrendMap(covid,trend)
+```
+We conducted a plot of tweets each month, and also get some geographic information of these tweets in our dataset from January to November. We can slide the time bar to get the information of each month. When the mouse is placed in the area of this state, we can see the name of this state and the number of tweets collected in this state. Also, we can see the sentiment score in each state. For the color scale, dark red means the overall sentiment of this state's tweets is very negative. Sky blue means that the overall sentiment of the state's tweets is positive. The second information is that the number of infections and deaths in a specific day.
+
+
+
+## 5.4 Normal Reddit trends
+Load Reddit data. And use Reddit data to draw plots.
+```{r}
+# spread data
+covid=read.csv('COVID-trends-shiny/us_covid19_daily.csv')%>%select(date,positiveIncrease)
+# a list of groups of keywords
+keywords1='Mask#N95#口罩'
+keywords2='lockdown#stay home'
+keywords1=keywords1%>%str_split('#')%>%.[[1]]
+keywords2=keywords2%>%str_split('#')%>%.[[1]]
+keyword=list(keywords1,keywords2)
+# a list of groups of data
+trend1=keyword[[1]]%>%{getRedditTrend(connR,keywords=.,period=NULL)}
+trend2=keyword[[2]]%>%{getRedditTrend(connR,keywords=.,period=NULL)}
+trend=list(trend1,trend2)
+# examples
+```
+
+
+```{r}
+trendPlot(covid,keyword[[1]],trend[[1]])
+```
+Take the plot of input 'mask' and 'N95' as an example. We can see that the black line represents the number of people infected with the new coronavirus that day. The other line represents the word frequency of mask and N95. In addition, green means positive of this keyword's sentiment in one day, and red means negative. In the plot, you can see that there are only red lines, which means that the sentiment of the tweets related to the mask is negative every day. But what needs to be emphasized here is that the amount of Reddit data we use is small. This may be related to the number of users of the software.
+
+```{r}
+trendPlot(covid,keyword[[2]],trend[[2]])
+```
+Take the plot of input 'lockdown' and 'stay home' as an example. We can see that the black line represents the number of people infected with the new coronavirus that day. The other line represents the word frequency of lockdown and stay home. In addition, red means negative of this keyword's sentiment in this day. In the plot, you can see that there are only red lines, which means that the sentiment of the tweets related to the mask is negative every day. What needs to be emphasized here is that the amount of Reddit data we use is small. This may be related to the number of users of the software. This is why the volatility in the graph is so large.
+
+```{r}
+trendsPlot(covid,keyword,trend)
+```
+From this plot, we can see there are three lines here. The dark line means the number of infected people every day. The diamond line means the word frequency of the keyword one which is 'mask'. And the triangle line means the word frequency of the keyword one which is 'mask'. The second and third lines mixed two colors. Red means negative of this keyword’s sentiment in this day. The volatility in the graph is large. What needs to be emphasized here is that the amount of Reddit data we use is small. This may be related to the number of users of the software.
+
+
+```{r echo=FALSE}
+# 6. Finial cleaning
+dbDisconnect(connT)
+dbDisconnect(connR)
+rm(connR,connT,covid,keyword,trend,trend1,trend2)
+rm(dbpathR,dbpathT,keywords1,keywords2)
+rm(geoTrendMap,geoTrendPlot,trendPlot,trendsPlot)
+rm(getRedditData,getRedditTrend,getTwitterData,getTwitterTrend)
+gc()
+```

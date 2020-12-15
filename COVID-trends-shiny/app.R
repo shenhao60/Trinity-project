@@ -29,7 +29,8 @@ covidGeoM=read.csv('us_states_covid19_daily.csv')%>%
 # define layout
 header <- dashboardHeader(title="Trends of Keywords")
 sidebar <- dashboardSidebar(sidebarMenu(menuItem("Trends of Tweets", tabName="tweetsTrend"),
-                                        menuItem("Tweets with geo info", tabName="tweetsGeo")))
+                                        menuItem("Tweets with geo info", tabName="tweetsGeo"),
+                                        menuItem("Trends of Reddit", tabName="redditTrend")))
 body <- dashboardBody(
   tabItems(
     tabItem("tweetsTrend",
@@ -37,8 +38,10 @@ body <- dashboardBody(
               column(3,
                      box(width=NULL,
                          textInput("keywordTweet", label=h4("Enter keywords"), value=""),
-                         actionButton("addButtonTweet", "Add")
-                         #actionButton("resetButtonTweet", "reset")
+                         actionButton("addButtonTweet", "Add"),
+                         p(class = "text-muted",
+                           paste('Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in "mask#covid" for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords at the same time. The app could take a few seconds to respond. Please do not click the add button repeatedly. ')
+                         )
                      ),
                      box(width=NULL,
                          uiOutput("keywordSelectTweet")
@@ -55,8 +58,10 @@ body <- dashboardBody(
               column(3,
                      box(width=NULL,
                          textInput("keywordTweetGeo", label=h4("Enter keywords"), value=""),
-                         actionButton("addButtonTweetGeo", "Add")
-                         #actionButton("resetButtonReddit", "reset")
+                         actionButton("addButtonTweetGeo", "Add"),
+                         p(class = "text-muted",
+                           paste('Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in "mask#covid" for analyzing tweets containing mask and covid in their text. The app could take a few seconds to respond. Please do not click the add button repeatedly. ')
+                         )
                      )
               ),
               column(9,
@@ -64,9 +69,27 @@ body <- dashboardBody(
                      br(),
                      plotlyOutput("figTrendTweetGeo")
               )
-              #"figTrendTweetGeo"
             )
             
+    ),
+    tabItem("redditTrend",
+            fluidRow(
+              column(3,
+                     box(width=NULL,
+                         textInput("keywordReddit", label=h4("Enter keywords"), value=""),
+                         actionButton("addButtonReddit", "Add"),
+                         p(class = "text-muted",
+                           paste('Note: type in the group of keywords here. If you have more than one keyword for one group, use # to separate them. For example, type in "mask#covid" for analyzing tweets containing mask and covid in their text. Every group generates one frequency and sentiment line plot. You can compare at most two groups of keywords at the same time. The app could take a few seconds to respond. Please do not click the add button repeatedly. ')
+                         )
+                     ),
+                     box(width=NULL,
+                         uiOutput("keywordSelectReddit")
+                     )
+              ),
+              column(9,
+                     plotlyOutput("figTrendReddit")
+              )
+            )
     )
   )
 )
@@ -158,16 +181,72 @@ server <- function(input, output) {
 
   # plot output
   output$figTrendTweetGeo=renderPlotly({
-    validate(need(input$addButtonTweetGeo!=0,"Please add a group of keywords."))
+    validate(need(input$addButtonTweetGeo!=0,""))
     geoTrendPlot(covidGeo,dataTPG()[[1]],dataTPG()[[3]])
   })
   output$figTweetGeo=renderPlotly({
-    validate(need(input$addButtonTweetGeo!=0,"Please add a group of keywords."))
+    validate(need(input$addButtonTweetGeo!=0,"Please add a group of keywords. "))
     geoTrendMap(covidGeoM,dataTPG()[[2]])
   })
+
+# plot for reddit
+# define overall variables
+dataRH=reactiveVal(NULL)
+dataRP=reactiveVal(NULL)
+# response to click action
+observeEvent(input$addButtonReddit,{
+  keywordR=input$keywordReddit%>%str_split('#')%>%.[[1]]
+  trendR=getRedditTrend(connR,keywords=keywordR,period=NULL)
+  dataR1=list(keywordR,trendR)
+  dataR2=dataRH()
+  dataRH(dataR1)
+  dataRP(list(dataR1,dataR2))
+})
+# output ui
+output$keywordSelectReddit=renderUI({
+  if(!is.null(dataRP()[[1]])){
+    if(is.null(dataRP()[[2]])){
+      choice=list(legendName(dataRP()[[1]][[1]]))
+      value=list('p1')
+    }
+    else{
+      choice=list(legendName(dataRP()[[1]][[1]]),
+                  legendName(dataRP()[[2]][[1]]))
+      value=list('p1','p2')
+    }
+  }
+  validate(need(exists("choice"),"Please add a group of keywords."))
+  checkboxGroupInput("lineSelectedReddit", "Select line(s) to plot: ",
+                     choiceNames=choice,choiceValues=value,selected='p1')
+})
+# plot output
+output$figTrendReddit=renderPlotly({
+  if(!is.null(dataRP()[[1]])){
+    if(is.null(dataRP()[[2]])){
+      trendPlot(covidTweet,dataRP()[[1]][[1]],dataRP()[[1]][[2]])
+    }
+    else{
+      if('p1'%in%input$lineSelectedReddit){
+        if('p2'%in%input$lineSelectedReddit){
+          trendsPlot(covidTweet,list(dataRP()[[1]][[1]],dataRP()[[2]][[1]]),
+                     list(dataRP()[[1]][[2]],dataRP()[[2]][[2]]))
+        }
+        else{
+          trendPlot(covidTweet,dataRP()[[1]][[1]],dataRP()[[1]][[2]])
+        }
+      }
+      else{
+        if('p2'%in%input$lineSelectedReddit){
+          trendPlot(covidTweet,dataRP()[[2]][[1]],dataRP()[[2]][[2]])
+        }
+        else{
+          plotly_empty()
+        }
+      }
+    }
+  }
+})
 }
-
-
 
 # Run the application 
 shinyApp(ui = ui, server = server)
